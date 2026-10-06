@@ -13,8 +13,18 @@ from rich.console import Console
 from medialab_setup.checks import CredentialChecker
 from medialab_setup.collect import CollectError, Mode, collect
 from medialab_setup.generate import render_all
+from medialab_setup.preflight import PreflightError
 from medialab_setup.prompts import NonInteractiveError, QuestionaryPrompter
 from medialab_setup.report import answers_table, files_table
+from medialab_setup.setup_flow import (
+    IMPLEMENTED_THROUGH,
+    NotImplementedPhase,
+    Phase,
+    SetupContext,
+    SetupOptions,
+    run_setup,
+)
+from medialab_setup.shell import Shell
 from medialab_setup.workspace import COMPOSE_FILE, Workspace
 
 PACKAGE_NAME = "medialab-setup"
@@ -41,6 +51,15 @@ CustomOption = Annotated[
 AnswersOption = Annotated[
     Path | None, typer.Option("--answers", help="Replay non-secret answers from this TOML file.")
 ]
+DryRunOption = Annotated[bool, typer.Option("--dry-run", help="Show the plan; write nothing.")]
+StopAfterOption = Annotated[
+    Phase, typer.Option("--stop-after", help="Last phase to run.", case_sensitive=False)
+]
+YesOption = Annotated[bool, typer.Option("--yes", help="Confirm every install step.")]
+EXIT_FAILURE = 1
+
+# Replaced in tests so no real process, port or disk is touched.
+make_shell = Shell
 
 
 @app.callback()
@@ -96,3 +115,42 @@ def plan(
     for warning in collected.warnings:
         console.print(f"[yellow]warning:[/yellow] {warning}")
     console.print("Dry run: nothing was written.")
+
+
+@app.command()
+def setup(
+    workspace: WorkspaceOption = None,
+    custom: CustomOption = False,
+    answers: AnswersOption = None,
+    dry_run: DryRunOption = False,
+    stop_after: StopAfterOption = IMPLEMENTED_THROUGH,
+    yes: YesOption = False,
+) -> None:
+    """Take a fresh clone to a configured stack: preflight, collect, generate, and on."""
+    ws = find_workspace(workspace)
+    ctx = SetupContext(
+        workspace=ws,
+        options=SetupOptions(
+            mode=Mode.CUSTOM if custom else Mode.EXPRESS,
+            answers_file=answers,
+            dry_run=dry_run,
+            stop_after=stop_after,
+            assume_yes=yes,
+            interactive=sys.stdin.isatty(),
+        ),
+        shell=make_shell(),
+        prompter=QuestionaryPrompter(console),
+        checker=CredentialChecker(),
+        console=console,
+    )
+    try:
+        run_setup(ctx)
+    except NotImplementedPhase as error:
+        console.print(f"[red]{error}[/red]")
+        raise typer.Exit(EXIT_USAGE) from error
+    except (CollectError, NonInteractiveError) as error:
+        console.print(f"[red]{error}[/red]")
+        raise typer.Exit(EXIT_USAGE) from error
+    except PreflightError as error:
+        console.print(f"[red]{error}[/red]")
+        raise typer.Exit(EXIT_FAILURE) from error

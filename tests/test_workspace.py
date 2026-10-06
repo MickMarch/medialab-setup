@@ -28,3 +28,15 @@ def test_missing_compose_is_an_error(tmp_path: Path) -> None:
 def test_backup_dir_is_under_state_dir(workspace_root: Path) -> None:
     workspace = Workspace(workspace_root)
     assert workspace.backup_dir.parent == workspace_root / ".medialab-setup" / "backup"
+
+
+def test_published_ports_resolve_interpolation_from_root_env(workspace_root: Path) -> None:
+    (workspace_root / "docker-compose.yml").write_text(
+        "services:\n"
+        "  svc-a:\n    build: {context: ./svc-a}\n    ports: ['127.0.0.1:${A_PORT:-8000}:8000']\n"
+        "  svc-b:\n    build: {context: ./svc-b}\n    ports: ['8081:8080']\n"
+        "  svc-c:\n    image: x\n"
+    )
+    assert Workspace(workspace_root).published_ports() == {"svc-a": 8000, "svc-b": 8081}
+    (workspace_root / ".env").write_text("A_PORT=9000\n")
+    assert Workspace(workspace_root).published_ports()["svc-a"] == 9000

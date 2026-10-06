@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `setup` command through the Generate phase: Preflight (Git, uv, Docker
+  Desktop and Jellyfin checked and installed through winget on confirmation,
+  download page as fallback; engine, submodules, published ports and a host
+  qBittorrent), Collect, then writing every `.env`, the media folders and the
+  answers file. `--dry-run`, `--stop-after`, `--yes`. Phases after Generate
+  are refused until they land.
 - `plan` command: collect answers and show what `setup` would write, writing
   nothing. Express mode asks only the required values still unset; custom
   mode walks every value and every template tunable. Each credential prompt

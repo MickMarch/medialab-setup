@@ -1,10 +1,14 @@
 from pathlib import Path
 
+import pytest
+from fakes import FakeShell
 from typer.testing import CliRunner
 
+from medialab_setup import cli
 from medialab_setup.answers import Answers
 from medialab_setup.answers_file import write_answers
 from medialab_setup.cli import VERSION_UNKNOWN, app, installed_version
+from medialab_setup.preflight import JELLYFIN_HEALTH_URL
 
 runner = CliRunner()
 
@@ -76,3 +80,29 @@ def test_plan_output_never_shows_a_secret(workspace_root: Path) -> None:
     result = runner.invoke(app, ["plan", "--workspace", str(workspace_root)])
     assert result.exit_code == 0, result.output
     assert "tmdb-secret-value" not in result.output
+
+
+def test_setup_dry_run_with_complete_env_exits_zero(
+    workspace_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _real_workspace(workspace_root)
+    shell = FakeShell(http={JELLYFIN_HEALTH_URL: "Healthy"})
+    shell.expect("git -C", stdout=" abc x (v1)\n")
+    shell.expect("docker info", stdout="28.0.0\n")
+    monkeypatch.setattr(cli, "make_shell", lambda: shell)
+    result = runner.invoke(app, ["setup", "--workspace", str(workspace_root), "--dry-run"])
+    assert result.exit_code == 0, result.output
+    assert "Preflight" in result.output
+    assert "Dry run" in result.output
+
+
+def test_setup_refuses_unimplemented_stop_after(
+    workspace_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _real_workspace(workspace_root)
+    monkeypatch.setattr(cli, "make_shell", FakeShell)
+    result = runner.invoke(
+        app, ["setup", "--workspace", str(workspace_root), "--stop-after", "verify"]
+    )
+    assert result.exit_code == 2
+    assert "not implemented" in result.output
