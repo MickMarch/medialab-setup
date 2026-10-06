@@ -13,6 +13,7 @@ from rich.console import Console
 from medialab_setup.checks import CredentialChecker
 from medialab_setup.collect import CollectError, Mode, collect
 from medialab_setup.generate import render_all
+from medialab_setup.gitops import GitError
 from medialab_setup.preflight import PreflightError
 from medialab_setup.prompts import NonInteractiveError, QuestionaryPrompter
 from medialab_setup.report import answers_table, files_table
@@ -26,6 +27,13 @@ from medialab_setup.setup_flow import (
     run_setup,
 )
 from medialab_setup.shell import Shell
+from medialab_setup.update_flow import (
+    RolledBack,
+    UpdateContext,
+    UpdateError,
+    UpdateOptions,
+    run_update,
+)
 from medialab_setup.workspace import COMPOSE_FILE, Workspace
 
 PACKAGE_NAME = "medialab-setup"
@@ -153,5 +161,42 @@ def setup(
         console.print(f"[red]{error}[/red]")
         raise typer.Exit(EXIT_USAGE) from error
     except (PreflightError, ScriptError, VerifyError) as error:
+        console.print(f"[red]{error}[/red]")
+        raise typer.Exit(EXIT_FAILURE) from error
+
+
+ToOption = Annotated[
+    str | None, typer.Option("--to", help="Root ref to move to (default: origin/main).")
+]
+NoRollbackOption = Annotated[
+    bool, typer.Option("--no-rollback", help="Leave the new state in place when verify fails.")
+]
+EXIT_ROLLED_BACK = 3
+
+
+@app.command()
+def update(
+    workspace: WorkspaceOption = None,
+    to: ToOption = None,
+    dry_run: DryRunOption = False,
+    no_rollback: NoRollbackOption = False,
+) -> None:
+    """Move a running stack to the current pins: check, snapshot, fetch, migrate, build, verify."""
+    ws = find_workspace(workspace)
+    ctx = UpdateContext(
+        workspace=ws,
+        options=UpdateOptions(
+            to=to, dry_run=dry_run, rollback=not no_rollback, interactive=sys.stdin.isatty()
+        ),
+        shell=make_shell(),
+        prompter=QuestionaryPrompter(console),
+        console=console,
+    )
+    try:
+        run_update(ctx)
+    except RolledBack as error:
+        console.print(f"[red]{error}[/red]")
+        raise typer.Exit(EXIT_ROLLED_BACK) from error
+    except (UpdateError, GitError, ScriptError, CollectError) as error:
         console.print(f"[red]{error}[/red]")
         raise typer.Exit(EXIT_FAILURE) from error
