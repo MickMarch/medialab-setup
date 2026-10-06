@@ -14,6 +14,11 @@ app = typer.Typer(
 )
 
 
+@app.callback()
+def main() -> None:
+    """Install and update the medialab stack from a clone of the workspace."""
+
+
 def installed_version() -> str:
     try:
         return version(PACKAGE_NAME)
