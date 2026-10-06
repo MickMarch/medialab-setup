@@ -63,7 +63,7 @@ def git_bash_path(path: Path) -> str:
     return f"/{drive}/{rest}"
 
 
-TASKS_DIR = "C:\Windows\System32\Tasks"
+TASKS_DIR = r"C:\Windows\System32\Tasks"
 
 
 def _task_exists(name: str) -> str:
@@ -71,7 +71,7 @@ def _task_exists(name: str) -> str:
     through the task file: a missing file is ItemNotFound, an unreadable one is access denied."""
     return (
         f'if (Get-ScheduledTask -TaskName "{name}" -ErrorAction SilentlyContinue) {{ "ok" }} '
-        f'else {{ try {{ Get-Item "{TASKS_DIR}\{name}" -ErrorAction Stop | Out-Null; "ok" }} '
+        f'else {{ try {{ Get-Item "{TASKS_DIR}\\{name}" -ErrorAction Stop | Out-Null; "ok" }} '
         f'catch [System.UnauthorizedAccessException] {{ "ok" }} catch {{ }} }}'
     )
 
