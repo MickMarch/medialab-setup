@@ -1,0 +1,14 @@
+# hatch-vcs generated version file
+src/medialab_setup/_version.py
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.venv/
+
+# Audit artifact
+requirements.audit.txt

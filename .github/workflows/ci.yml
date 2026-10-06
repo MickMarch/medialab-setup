@@ -1,0 +1,12 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  quality:
+    # Shared quality gate; step order and tool versions live in the workspace repo.
+    uses: MickMarch/medialab/.github/workflows/python-ci.yml@main
