@@ -22,6 +22,9 @@ files; it never imports a service package.
 - Shell, git, Docker and HTTP are reached through `Shell` and `CredentialChecker`
   and faked at that boundary in tests (`tests/fakes.py`).
 - Media folder names come from `medialab-contracts`, never literals here.
+- Library roots are registered against Jellyfin directly on the host: the
+  medialab-jellyfin worker publishes no port and only appends paths to
+  libraries that already exist.
 - Host steps (Task Scheduler, firewall, Docker Desktop settings) print the
   PowerShell they will run and ask once per step; automatic logon is never
   automated.
@@ -43,4 +46,6 @@ files; it never imports a service package.
 - `report.py`: Rich tables for answers and files; values shown only for non-secrets.
 - `shell.py`: `Shell`, the host boundary (processes, ports, disk, local HTTP); `FakeShell` in tests.
 - `preflight.py`: phase Preflight; prerequisite table with winget ids and download URLs; engine, submodule, port and host-qBittorrent rows.
-- `setup_flow.py`: phase order, `SetupOptions`, `SetupContext`, the runners; `IMPLEMENTED_THROUGH` gates `--stop-after`.
+- `setup_flow.py`: phase order, `SetupOptions`, `SetupContext`, one runner per phase; `--skip-host`, `--stop-after`.
+- `scripts.py`: Git Bash resolution (never WSL bash), the bin/ script and compose commands, `run_or_raise`.
+- `jellyfin_client.py`: list and create Jellyfin libraries on the host; `ensure_library_roots` registers Movies and Shows once, never `_incoming`.

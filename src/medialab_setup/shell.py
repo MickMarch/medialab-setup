@@ -5,6 +5,7 @@ from __future__ import annotations
 import shutil
 import socket
 import subprocess
+import time
 from pathlib import Path
 
 import httpx
@@ -23,6 +24,13 @@ class Shell:
         self, args: list[str], *, timeout: float = COMMAND_TIMEOUT_SECONDS
     ) -> subprocess.CompletedProcess[str]:
         return subprocess.run(args, capture_output=True, text=True, timeout=timeout, check=False)
+
+    def stream(self, args: list[str], *, timeout: float = COMMAND_TIMEOUT_SECONDS) -> int:
+        """Run with output going straight to the terminal; returns the exit code."""
+        return subprocess.run(args, timeout=timeout, check=False).returncode
+
+    def sleep(self, seconds: float) -> None:
+        time.sleep(seconds)
 
     def port_open(self, port: int, host: str = LOOPBACK) -> bool:
         try:

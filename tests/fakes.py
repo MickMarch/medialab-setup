@@ -10,6 +10,7 @@ from pathlib import Path
 from medialab_setup.shell import Shell
 
 GIB = 1024**3
+DEFAULT_COMMANDS = frozenset({"git", "uv", "docker", "winget", "bash"})
 
 
 class FakeShell(Shell):
@@ -22,7 +23,7 @@ class FakeShell(Shell):
         http: Mapping[str, str | None] | None = None,
         free_bytes: int = 500 * GIB,
     ) -> None:
-        self.commands = set(commands or {"git", "uv", "docker", "winget"})
+        self.commands = set(DEFAULT_COMMANDS if commands is None else commands)
         self.open_ports = set(open_ports or set())
         self.existing_paths = set(existing_paths or set())
         self.http = dict(http or {})
@@ -30,6 +31,9 @@ class FakeShell(Shell):
         self.runs: list[list[str]] = []
         self.results: dict[str, subprocess.CompletedProcess[str]] = {}
         self.install_adds: dict[str, str] = {}
+        self.streams: list[list[str]] = []
+        self.stream_codes: dict[str, deque[int]] = {}
+        self.slept: list[float] = []
 
     def which(self, name: str) -> str | None:
         return f"C:/bin/{name}.exe" if name in self.commands else None
@@ -48,6 +52,20 @@ class FakeShell(Shell):
             if joined.startswith(prefix):
                 return result
         return subprocess.CompletedProcess(args, 0, "", "")
+
+    def expect_stream(self, fragment: str, *codes: int) -> None:
+        self.stream_codes[fragment] = deque(codes)
+
+    def stream(self, args: list[str], *, timeout: float = 0) -> int:
+        self.streams.append(args)
+        joined = " ".join(args)
+        for fragment, codes in self.stream_codes.items():
+            if fragment in joined:
+                return codes.popleft() if len(codes) > 1 else codes[0]
+        return 0
+
+    def sleep(self, seconds: float) -> None:
+        self.slept.append(seconds)
 
     def port_open(self, port: int, host: str = "") -> bool:
         return port in self.open_ports
