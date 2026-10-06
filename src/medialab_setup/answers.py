@@ -16,6 +16,9 @@ from pydantic import BaseModel, SecretStr
 from medialab_setup.bindings import GENERATED_FIELDS
 
 SECRET_BYTES = 32
+# How a container reaches a service on the Docker Desktop host.
+CONTAINER_HOST_ALIAS = "host.docker.internal"
+EXTRA_FIELD = "extra"
 
 
 def generate_secret() -> str:
@@ -26,6 +29,9 @@ class Answers(BaseModel):
     # Asked: host layout.
     media_host_dir: str | None = None
     timezone: str | None = None
+
+    # Derived: how containers reach host apps.
+    jellyfin_host: str = CONTAINER_HOST_ALIAS
 
     # Asked: third-party credentials.
     tmdb_api_key: SecretStr | None = None
@@ -48,6 +54,9 @@ class Answers(BaseModel):
     qb_api_key: SecretStr | None = None
     web_secret_key: SecretStr | None = None
 
+    # Custom mode: per-target overrides of unbound template keys.
+    extra: dict[str, dict[str, str]] = {}
+
     def with_generated(self) -> Answers:
         """Fill every generated field that is still unset."""
         fills = {
@@ -68,5 +77,17 @@ class Answers(BaseModel):
         return {
             name: value
             for name, value in self.model_dump().items()
-            if value is not None and not isinstance(value, SecretStr)
+            if value is not None and value != {} and not isinstance(value, SecretStr)
         }
+
+    def merged_under(self, other: Answers) -> Answers:
+        """This model's decided values, with `other` filling what is still unset."""
+        fills = {
+            name: getattr(other, name)
+            for name in type(self).model_fields
+            if name != EXTRA_FIELD and getattr(self, name) is None
+        }
+        extra = {**other.extra}
+        for target, keys in self.extra.items():
+            extra[target] = {**extra.get(target, {}), **keys}
+        return self.model_copy(update={**fills, EXTRA_FIELD: extra})

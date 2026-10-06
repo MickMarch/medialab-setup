@@ -41,6 +41,7 @@ BINDINGS: tuple[Binding, ...] = (
     Binding(DOWNLOADER, "QB_API_KEY", "qb_api_key"),
     Binding(DOWNLOADER, "TMDB_API_KEY", "tmdb_api_key"),
     Binding(JELLYFIN_WORKER, "JELLYFIN_API_KEY", "jellyfin_api_key"),
+    Binding(JELLYFIN_WORKER, "JELLYFIN_HOST", "jellyfin_host"),
     Binding(BOT, "DISCORD_TOKEN", "discord_token"),
     Binding(BOT, "DISCORD_GUILD_ID", "discord_guild_id"),
     Binding(ORCHESTRATOR, "DISCORD_NOTIFY_WEBHOOK_URL", "discord_notify_webhook_url"),
@@ -74,3 +75,29 @@ def owner_of(field: str, bindings: tuple[Binding, ...] = BINDINGS) -> Binding | 
         if binding.field == field:
             return binding
     return None
+
+
+# Asked of the operator. Express mode asks only the required ones with no default.
+ASKED_FIELDS: tuple[str, ...] = (
+    "media_host_dir",
+    "timezone",
+    "tmdb_api_key",
+    "jellyfin_api_key",
+    "discord_token",
+    "discord_guild_id",
+    "discord_notify_webhook_url",
+    "web_password",
+    "vpn_service_provider",
+    "vpn_type",
+    "wireguard_private_key",
+    "server_countries",
+)
+REQUIRED_FIELDS: tuple[str, ...] = (
+    "media_host_dir",
+    "tmdb_api_key",
+    "jellyfin_api_key",
+    "discord_token",
+    "discord_guild_id",
+    "web_password",
+    "wireguard_private_key",
+)

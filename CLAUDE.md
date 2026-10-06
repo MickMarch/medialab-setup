@@ -34,3 +34,9 @@ files; it never imports a service package.
 - `answers.py`: the `Answers` model (asked, generated), secret-safe dumps.
 - `bindings.py`: (target, key) to answers-field table; owners first; `KEY_PAIRS` from `docs/secrets.md`.
 - `generate.py`: collect existing values, render every target, write all.
+- `guides.py`: per asked credential, the console URL, click path, shape and which live check applies.
+- `checks.py`: `CredentialChecker`, read-only TMDB/Jellyfin/Discord calls; offline is a warning.
+- `prompts.py`: `Prompter` protocol, questionary implementation, guide rendering, browser opener.
+- `answers_file.py`: `.medialab-setup/answers.toml` read/write, non-secret only.
+- `collect.py`: phase Collect; precedence existing > answers file > prompt; express/custom.
+- `report.py`: Rich tables for answers and files; values shown only for non-secrets.

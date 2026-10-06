@@ -35,6 +35,7 @@ class EnvTemplate:
 
     leading: tuple[str, ...]
     entries: tuple[TemplateEntry, ...]
+    trailing: tuple[str, ...] = ()
 
     @classmethod
     def from_path(cls, path: Path) -> EnvTemplate:
@@ -73,7 +74,7 @@ class EnvTemplate:
             )
             pending_comments = []
             blank_before = False
-        return cls(leading=tuple(leading), entries=tuple(entries))
+        return cls(leading=tuple(leading), entries=tuple(entries), trailing=tuple(pending_comments))
 
     @property
     def keys(self) -> tuple[str, ...]:
@@ -118,6 +119,9 @@ def render_env(template: EnvTemplate, values: dict[str, str], existing: dict[str
         lines.extend(entry.comments)
         value = values.get(entry.key, existing.get(entry.key, entry.default))
         lines.append(f"{entry.key}={_quote(value)}")
+    if template.trailing:
+        lines.append("")
+        lines.extend(template.trailing)
     extras = [key for key in existing if key not in template.keys]
     if extras:
         lines.append("")

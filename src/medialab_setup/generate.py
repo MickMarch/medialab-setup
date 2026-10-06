@@ -46,6 +46,7 @@ def render_all(
             if binding.target == target.name
             and (plain := answers.plain_value(binding.field)) is not None
         }
+        values.update(answers.extra.get(target.name, {}))
         rendered[target.name] = render_env(template, values, existing=_existing_values(target))
     return rendered
 
