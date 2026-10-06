@@ -23,16 +23,16 @@ from medialab_setup.scripts import (
     BUILD_SCRIPT,
     DOCTOR_SCRIPT,
     PROVISION_SCRIPT,
+    VERIFY_WINDOW_SECONDS,
     compose_up_command,
     run_or_raise,
     script_command,
+    wait_for_doctor,
 )
 from medialab_setup.shell import Shell
 from medialab_setup.workspace import Workspace
 
 MINIMUM_FREE_BYTES = 50 * 1024**3
-VERIFY_WINDOW_SECONDS = 300
-VERIFY_INTERVAL_SECONDS = 15
 
 
 class Phase(str, Enum):
@@ -207,20 +207,11 @@ def run_host(ctx: SetupContext) -> None:
 
 
 def run_verify(ctx: SetupContext) -> None:
-    command = script_command(ctx.shell, ctx.workspace, DOCTOR_SCRIPT)
-    _announce(ctx, command)
     if ctx.options.dry_run:
+        ctx.console.print(f"$ {' '.join(script_command(ctx.shell, ctx.workspace, DOCTOR_SCRIPT))}")
         return
-    waited = 0
-    while True:
-        if ctx.shell.stream(command) == 0:
-            ctx.console.print("Doctor green.")
-            return
-        if waited >= VERIFY_WINDOW_SECONDS:
-            raise VerifyError(f"doctor still failing after {VERIFY_WINDOW_SECONDS} s")
-        ctx.console.print(f"Doctor not green yet; retrying in {VERIFY_INTERVAL_SECONDS} s.")
-        ctx.shell.sleep(VERIFY_INTERVAL_SECONDS)
-        waited += VERIFY_INTERVAL_SECONDS
+    if not wait_for_doctor(ctx.shell, ctx.workspace, ctx.console.print):
+        raise VerifyError(f"doctor still failing after {VERIFY_WINDOW_SECONDS} s")
 
 
 PHASE_RUNNERS = {

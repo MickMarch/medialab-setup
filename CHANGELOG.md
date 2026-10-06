@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `update` command: a running / pinned / target table per service and the
+  root commits about to be taken; exits early when up to date. Otherwise
+  snapshots the root commit and every `.env`, fast-forwards `main` (refusing
+  a dirty tree or another branch), updates submodules to their pins, appends
+  template keys the live `.env` files lack and flags removed ones, rebuilds,
+  recreates, and runs the doctor for the verify window; on failure restores
+  the snapshot unless `--no-rollback`. `--to <ref>` targets a root ref,
+  `--dry-run` shows the check only (MickMarch/medialab#129).
 - Host phase: every step in `docs/host-setup.md` as a check-then-apply pair
   (Jellyfin SYSTEM task, tray autostart off, lock at logon, doctor after
   logon, LAN firewall rule), elevated steps batched into one UAC prompt;

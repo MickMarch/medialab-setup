@@ -10,11 +10,15 @@ from medialab_setup.collect import Mode
 from medialab_setup.guides import Check, guide_for
 from medialab_setup.jellyfin_client import JellyfinClient, Library
 from medialab_setup.preflight import JELLYFIN_HEALTH_URL, PreflightError
-from medialab_setup.scripts import DOCTOR_SCRIPT, PROVISION_SCRIPT, ScriptError
-from medialab_setup.setup_flow import (
-    MINIMUM_FREE_BYTES,
+from medialab_setup.scripts import (
+    DOCTOR_SCRIPT,
+    PROVISION_SCRIPT,
     VERIFY_INTERVAL_SECONDS,
     VERIFY_WINDOW_SECONDS,
+    ScriptError,
+)
+from medialab_setup.setup_flow import (
+    MINIMUM_FREE_BYTES,
     Phase,
     SetupContext,
     SetupOptions,

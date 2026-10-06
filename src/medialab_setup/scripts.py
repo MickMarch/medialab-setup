@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 from medialab_setup.shell import Shell
@@ -13,6 +14,8 @@ BUILD_SCRIPT = "bin/medialab-build.sh"
 PROVISION_SCRIPT = "bin/medialab-qbt-provision.sh"
 DOCTOR_SCRIPT = "bin/medialab-doctor.sh"
 VERSIONS_FILE = ".versions.env"
+VERIFY_WINDOW_SECONDS = 300
+VERIFY_INTERVAL_SECONDS = 15
 
 
 class ScriptError(RuntimeError):
@@ -52,3 +55,21 @@ def run_or_raise(shell: Shell, command: list[str], what: str) -> None:
     code = shell.stream(command)
     if code != 0:
         raise ScriptError(f"{what} exited {code}")
+
+
+def wait_for_doctor(shell: Shell, workspace: Workspace, note: Callable[[str], object]) -> bool:
+    """Run the doctor until green or the verify window closes. gluetun must pass its
+    health check before the downloader starts, so the first runs may fail."""
+    command = script_command(shell, workspace, DOCTOR_SCRIPT)
+    note(f"$ {' '.join(command)}")
+    waited = 0
+    while True:
+        if shell.stream(command) == 0:
+            note("Doctor green.")
+            return True
+        if waited >= VERIFY_WINDOW_SECONDS:
+            note(f"Doctor still failing after {VERIFY_WINDOW_SECONDS} s.")
+            return False
+        note(f"Doctor not green yet; retrying in {VERIFY_INTERVAL_SECONDS} s.")
+        shell.sleep(VERIFY_INTERVAL_SECONDS)
+        waited += VERIFY_INTERVAL_SECONDS
