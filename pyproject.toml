@@ -40,6 +40,8 @@ ignore = ["UP042"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["PLR2004"]
+# PowerShell one-liners mirror docs/host-setup.md verbatim; wrapping them would change the commands.
+"src/medialab_setup/host.py" = ["E501"]
 
 [tool.mypy]
 python_version = "3.12"

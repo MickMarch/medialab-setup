@@ -14,6 +14,7 @@ from medialab_setup.answers_file import answers_path, write_answers
 from medialab_setup.checks import CredentialChecker
 from medialab_setup.collect import Collected, Mode, collect
 from medialab_setup.generate import render_all, write_all
+from medialab_setup.host import HostPhase, HostRow
 from medialab_setup.jellyfin_client import JellyfinClient, ensure_library_roots
 from medialab_setup.preflight import Preflight, PreflightError, PreflightResult, Status
 from medialab_setup.prompts import Prompter, UrlOpener, open_in_browser
@@ -182,8 +183,27 @@ def run_provision(ctx: SetupContext) -> None:
         ctx.console.print("Jellyfin libraries present.")
 
 
+def host_table(rows: list[HostRow]) -> Table:
+    table = Table(title="Host")
+    table.add_column("")
+    table.add_column("Step")
+    table.add_column("Detail")
+    for row in rows:
+        table.add_row(row.outcome.value, row.name, row.detail)
+    return table
+
+
 def run_host(ctx: SetupContext) -> None:
-    ctx.console.print("Host autostart steps are not implemented yet; see docs/host-setup.md.")
+    rows = HostPhase(
+        ctx.workspace,
+        ctx.shell,
+        ctx.prompter,
+        dry_run=ctx.options.dry_run,
+        assume_yes=ctx.options.assume_yes,
+        interactive=ctx.options.interactive,
+        opener=ctx.opener,
+    ).run()
+    ctx.console.print(host_table(rows))
 
 
 def run_verify(ctx: SetupContext) -> None:

@@ -54,10 +54,14 @@ class Workspace:
     def compose_path(self) -> Path:
         return self.root / COMPOSE_FILE
 
+    @property
+    def state_dir(self) -> Path:
+        return self.root / STATE_DIR
+
     @cached_property
     def backup_dir(self) -> Path:
         stamp = datetime.now(UTC).strftime(BACKUP_TIMESTAMP_FORMAT)
-        return self.root / STATE_DIR / BACKUP_DIR / stamp
+        return self.state_dir / BACKUP_DIR / stamp
 
     def _services(self) -> dict[str, dict[str, Any]]:
         if not self.compose_path.exists():

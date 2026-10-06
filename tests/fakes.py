@@ -34,6 +34,7 @@ class FakeShell(Shell):
         self.streams: list[list[str]] = []
         self.stream_codes: dict[str, deque[int]] = {}
         self.slept: list[float] = []
+        self.elevated_scripts: list[str] = []
 
     def which(self, name: str) -> str | None:
         return f"C:/bin/{name}.exe" if name in self.commands else None
@@ -48,8 +49,8 @@ class FakeShell(Shell):
             command = self.install_adds.get(args[-1])
             if command:
                 self.commands.add(command)
-        for prefix, result in self.results.items():
-            if joined.startswith(prefix):
+        for fragment, result in self.results.items():
+            if fragment in joined:
                 return result
         return subprocess.CompletedProcess(args, 0, "", "")
 
@@ -66,6 +67,10 @@ class FakeShell(Shell):
 
     def sleep(self, seconds: float) -> None:
         self.slept.append(seconds)
+
+    def run_elevated(self, script_path: Path) -> int:
+        self.elevated_scripts.append(script_path.read_text())
+        return 0
 
     def port_open(self, port: int, host: str = "") -> bool:
         return port in self.open_ports

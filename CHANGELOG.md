@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Host phase: every step in `docs/host-setup.md` as a check-then-apply pair
+  (Jellyfin SYSTEM task, tray autostart off, lock at logon, doctor after
+  logon, LAN firewall rule), elevated steps batched into one UAC prompt;
+  automatic logon and Docker Desktop's autostart switch are guided manual
+  steps rechecked after confirmation. `setup` now runs every phase.
 - `setup` now runs Build (`bin/medialab-build.sh`), Provision
   (`bin/medialab-qbt-provision.sh`, `docker compose up -d` with both env
   files, Movies and Shows registered as Jellyfin libraries when missing) and
