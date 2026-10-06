@@ -15,7 +15,7 @@ from pydantic import SecretStr
 
 from medialab_setup.answers import Answers
 from medialab_setup.answers_file import read_answers
-from medialab_setup.bindings import ASKED_FIELDS, BINDINGS, REQUIRED_FIELDS, Binding
+from medialab_setup.bindings import ASKED_FIELDS, BINDINGS, REQUIRED_FIELDS, Binding, owner_of
 from medialab_setup.checks import CredentialChecker
 from medialab_setup.envfile import EnvTemplate, parse_env_values
 from medialab_setup.generate import collect_existing
@@ -87,7 +87,9 @@ def collect(
     if to_ask and not interactive:
         raise CollectError(f"missing values with no terminal to ask: {', '.join(to_ask)}")
     for name in to_ask:
-        _ask_field(collected, name, prompter, checker, opener)
+        _ask_field(
+            collected, name, prompter, checker, opener, _template_default(workspace, name, bindings)
+        )
 
     if mode is Mode.CUSTOM:
         _ask_unbound_keys(workspace, collected, prompter, bindings)
@@ -99,18 +101,33 @@ def collect(
     return collected
 
 
+def _template_default(workspace: Workspace, name: str, bindings: tuple[Binding, ...]) -> str:
+    """The owning template's default for an asked field, so Enter can accept it."""
+    owner = owner_of(name, bindings)
+    if owner is None:
+        return ""
+    target = next((t for t in workspace.env_targets() if t.name == owner.target), None)
+    if target is None or not target.example_path.exists():
+        return ""
+    template = EnvTemplate.from_path(target.example_path)
+    return template.default_of(owner.key) if owner.key in template.keys else ""
+
+
 def _ask_field(
     collected: Collected,
     name: str,
     prompter: Prompter,
     checker: CredentialChecker,
     opener: UrlOpener,
+    template_default: str = "",
 ) -> None:
     guide = guide_for(name)
     prompter.note(render_guide(guide))
     if guide.url and prompter.confirm(f"Open {guide.url} in your browser?", default=False):
         opener(guide.url)
     current = collected.answers.plain_value(name) or ""
+    if not current and not guide.secret:
+        current = template_default
     while True:
         if guide.secret:
             raw = prompter.secret(

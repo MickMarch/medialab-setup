@@ -211,3 +211,34 @@ def test_secret_values_never_appear_in_notes(workspace_root: Path) -> None:
 
 def test_fake_secret_type_roundtrip() -> None:
     assert SecretStr("x").get_secret_value() == "x"
+
+
+def test_non_secret_prompt_is_prefilled_with_the_template_default(workspace_root: Path) -> None:
+    script = _full_script()
+    script[_title("media_host_dir")] = [""]
+    prompter = ScriptedPrompter(script)
+    collected = collect(
+        Workspace(workspace_root),
+        mode=Mode.EXPRESS,
+        prompter=prompter,
+        checker=FakeChecker(),
+        bindings=FIXTURE_BINDINGS,
+    )
+    assert collected.answers.media_host_dir == "F:/Media"
+    assert "A value is required." not in prompter.notes
+
+
+def test_secret_prompt_is_never_prefilled(workspace_root: Path) -> None:
+    (workspace_root / "svc-a" / ".env.example").write_text("API_KEY=\nSHARED_KEY=leaked-default\n")
+    script = _full_script()
+    script[_title("tmdb_api_key")] = ["", "real"]
+    prompter = ScriptedPrompter(script)
+    collected = collect(
+        Workspace(workspace_root),
+        mode=Mode.EXPRESS,
+        prompter=prompter,
+        checker=FakeChecker(),
+        bindings=FIXTURE_BINDINGS,
+    )
+    assert collected.answers.tmdb_api_key is not None
+    assert collected.answers.tmdb_api_key.get_secret_value() == "real"

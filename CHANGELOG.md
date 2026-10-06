@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The inline hint after a prompt read like a prefilled value, so Enter sent an
+  empty answer. Hints now render as `(e.g. ...)`, and a non-secret prompt with
+  no current value is prefilled with the template default so Enter accepts it.
+
 ## [0.1.0] - 2026-10-06
 
 ### Added
