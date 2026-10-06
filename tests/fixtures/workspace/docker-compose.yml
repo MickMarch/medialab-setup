@@ -1,0 +1,11 @@
+services:
+  gluetun:
+    image: qmcgaw/gluetun:v3
+  svc-a:
+    build:
+      context: ./svc-a
+    image: medialab/svc-a:${SVC_A_VERSION:-dev}
+  svc-b:
+    build:
+      context: ./svc-b
+    image: medialab/svc-b:${SVC_B_VERSION:-dev}
