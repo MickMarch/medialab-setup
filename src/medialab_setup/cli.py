@@ -16,12 +16,13 @@ from medialab_setup.generate import render_all
 from medialab_setup.preflight import PreflightError
 from medialab_setup.prompts import NonInteractiveError, QuestionaryPrompter
 from medialab_setup.report import answers_table, files_table
+from medialab_setup.scripts import ScriptError
 from medialab_setup.setup_flow import (
-    IMPLEMENTED_THROUGH,
-    NotImplementedPhase,
+    LAST_PHASE,
     Phase,
     SetupContext,
     SetupOptions,
+    VerifyError,
     run_setup,
 )
 from medialab_setup.shell import Shell
@@ -56,6 +57,7 @@ StopAfterOption = Annotated[
     Phase, typer.Option("--stop-after", help="Last phase to run.", case_sensitive=False)
 ]
 YesOption = Annotated[bool, typer.Option("--yes", help="Confirm every install step.")]
+SkipHostOption = Annotated[bool, typer.Option("--skip-host", help="Skip the host autostart steps.")]
 EXIT_FAILURE = 1
 
 # Replaced in tests so no real process, port or disk is touched.
@@ -123,8 +125,9 @@ def setup(
     custom: CustomOption = False,
     answers: AnswersOption = None,
     dry_run: DryRunOption = False,
-    stop_after: StopAfterOption = IMPLEMENTED_THROUGH,
+    stop_after: StopAfterOption = LAST_PHASE,
     yes: YesOption = False,
+    skip_host: SkipHostOption = False,
 ) -> None:
     """Take a fresh clone to a configured stack: preflight, collect, generate, and on."""
     ws = find_workspace(workspace)
@@ -137,6 +140,7 @@ def setup(
             stop_after=stop_after,
             assume_yes=yes,
             interactive=sys.stdin.isatty(),
+            skip_host=skip_host,
         ),
         shell=make_shell(),
         prompter=QuestionaryPrompter(console),
@@ -145,12 +149,9 @@ def setup(
     )
     try:
         run_setup(ctx)
-    except NotImplementedPhase as error:
-        console.print(f"[red]{error}[/red]")
-        raise typer.Exit(EXIT_USAGE) from error
     except (CollectError, NonInteractiveError) as error:
         console.print(f"[red]{error}[/red]")
         raise typer.Exit(EXIT_USAGE) from error
-    except PreflightError as error:
+    except (PreflightError, ScriptError, VerifyError) as error:
         console.print(f"[red]{error}[/red]")
         raise typer.Exit(EXIT_FAILURE) from error

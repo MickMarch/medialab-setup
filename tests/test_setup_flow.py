@@ -8,18 +8,24 @@ from medialab_setup.answers_file import answers_path, read_answers
 from medialab_setup.checks import CheckResult, CredentialChecker
 from medialab_setup.collect import Mode
 from medialab_setup.guides import Check, guide_for
+from medialab_setup.jellyfin_client import JellyfinClient, Library
 from medialab_setup.preflight import JELLYFIN_HEALTH_URL, PreflightError
+from medialab_setup.scripts import DOCTOR_SCRIPT, PROVISION_SCRIPT, ScriptError
 from medialab_setup.setup_flow import (
     MINIMUM_FREE_BYTES,
-    NotImplementedPhase,
+    VERIFY_INTERVAL_SECONDS,
+    VERIFY_WINDOW_SECONDS,
     Phase,
     SetupContext,
     SetupOptions,
+    VerifyError,
     media_folders,
     run_setup,
 )
 from medialab_setup.workspace import Workspace
 
+PROVISION = Path(PROVISION_SCRIPT).name
+DOCTOR = Path(DOCTOR_SCRIPT).name
 REAL_SERVICES = ("torrent-downloader", "medialab-jellyfin", "medialab-bot", "medialab-web")
 REQUIRED_TITLES = (
     "tmdb_api_key",
@@ -34,6 +40,21 @@ REQUIRED_TITLES = (
 class AlwaysOkChecker(CredentialChecker):
     def run(self, check: Check, value: str) -> CheckResult:
         return CheckResult(ok=True, detail="ok")
+
+
+class FakeJellyfin(JellyfinClient):
+    instances: list["FakeJellyfin"] = []
+
+    def __init__(self, api_key: str, base_url: str = "") -> None:
+        super().__init__(api_key, base_url or "http://127.0.0.1:8096")
+        self.created: list[str] = []
+        FakeJellyfin.instances.append(self)
+
+    def list_libraries(self) -> list[Library]:
+        return []
+
+    def create_library(self, name: str, collection_type: str, path: str) -> None:
+        self.created.append(name)
 
 
 def _real_workspace(root: Path) -> Workspace:
@@ -69,7 +90,8 @@ def _ctx(root: Path, media: Path, **options: object) -> SetupContext:
         shell=_ready_shell(),
         prompter=ScriptedPrompter(script),
         checker=AlwaysOkChecker(),
-        console=Console(record=True, width=120),
+        console=Console(record=True, width=400),
+        make_jellyfin_client=FakeJellyfin,
     )
 
 
@@ -123,11 +145,70 @@ def test_preflight_failure_stops_before_collect(workspace_root: Path, tmp_path: 
     assert ctx.collected is None
 
 
-def test_unimplemented_phase_is_refused_up_front(workspace_root: Path, tmp_path: Path) -> None:
-    ctx = _ctx(workspace_root, tmp_path / "media", stop_after=Phase.BUILD)
-    with pytest.raises(NotImplementedPhase):
+def _streamed(ctx: SetupContext) -> list[str]:
+    return [" ".join(command) for command in ctx.shell.streams]  # type: ignore[attr-defined]
+
+
+def test_full_run_drives_scripts_compose_jellyfin_and_doctor(
+    workspace_root: Path, tmp_path: Path
+) -> None:
+    FakeJellyfin.instances.clear()
+    ctx = _ctx(workspace_root, tmp_path / "media")
+    run_setup(ctx)
+    streamed = _streamed(ctx)
+    assert any("medialab-build.sh" in c for c in streamed)
+    assert any(PROVISION in c for c in streamed)
+    assert any("docker compose" in c and c.endswith("up -d") for c in streamed)
+    assert any(DOCTOR in c for c in streamed)
+    assert FakeJellyfin.instances[0].created == ["Movies", "Shows"]
+    assert streamed.index(next(c for c in streamed if PROVISION in c)) < streamed.index(
+        next(c for c in streamed if DOCTOR in c)
+    )
+
+
+def test_dry_run_streams_nothing(workspace_root: Path, tmp_path: Path) -> None:
+    ctx = _ctx(workspace_root, tmp_path / "media", dry_run=True)
+    run_setup(ctx)
+    assert _streamed(ctx) == []
+    assert "medialab-build.sh" in ctx.console.export_text()
+
+
+def test_failing_script_stops_the_run(workspace_root: Path, tmp_path: Path) -> None:
+    ctx = _ctx(workspace_root, tmp_path / "media")
+    ctx.shell.expect_stream(PROVISION, 1)  # type: ignore[attr-defined]
+    with pytest.raises(ScriptError, match=PROVISION):
         run_setup(ctx)
-    assert ctx.collected is None
+    assert not any("docker compose" in c for c in _streamed(ctx))
+
+
+def test_verify_retries_until_green(workspace_root: Path, tmp_path: Path) -> None:
+    ctx = _ctx(workspace_root, tmp_path / "media")
+    ctx.shell.expect_stream(DOCTOR, 1, 1, 0)  # type: ignore[attr-defined]
+    run_setup(ctx)
+    assert ctx.shell.slept == [VERIFY_INTERVAL_SECONDS, VERIFY_INTERVAL_SECONDS]  # type: ignore[attr-defined]
+    assert "Doctor green." in ctx.console.export_text()
+
+
+def test_verify_gives_up_after_the_window(workspace_root: Path, tmp_path: Path) -> None:
+    ctx = _ctx(workspace_root, tmp_path / "media")
+    ctx.shell.expect_stream(DOCTOR, 1)  # type: ignore[attr-defined]
+    with pytest.raises(VerifyError):
+        run_setup(ctx)
+    assert sum(ctx.shell.slept) >= VERIFY_WINDOW_SECONDS  # type: ignore[attr-defined]
+
+
+def test_skip_host_skips_only_host(workspace_root: Path, tmp_path: Path) -> None:
+    ctx = _ctx(workspace_root, tmp_path / "media", skip_host=True)
+    run_setup(ctx)
+    text = ctx.console.export_text()
+    assert "Skipped (--skip-host)" in text
+    assert "Doctor green." in text
+
+
+def test_stop_after_generate_runs_no_script(workspace_root: Path, tmp_path: Path) -> None:
+    ctx = _ctx(workspace_root, tmp_path / "media", stop_after=Phase.GENERATE)
+    run_setup(ctx)
+    assert _streamed(ctx) == []
 
 
 def test_low_disk_space_is_a_warning(workspace_root: Path, tmp_path: Path) -> None:

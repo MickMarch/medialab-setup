@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `setup` now runs Build (`bin/medialab-build.sh`), Provision
+  (`bin/medialab-qbt-provision.sh`, `docker compose up -d` with both env
+  files, Movies and Shows registered as Jellyfin libraries when missing) and
+  Verify (`bin/medialab-doctor.sh`, retried for five minutes). The Host phase
+  is a placeholder; `--skip-host` skips it.
 - `setup` command through the Generate phase: Preflight (Git, uv, Docker
   Desktop and Jellyfin checked and installed through winget on confirmation,
   download page as fallback; engine, submodules, published ports and a host

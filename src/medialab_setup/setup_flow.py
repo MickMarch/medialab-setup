@@ -14,13 +14,24 @@ from medialab_setup.answers_file import answers_path, write_answers
 from medialab_setup.checks import CredentialChecker
 from medialab_setup.collect import Collected, Mode, collect
 from medialab_setup.generate import render_all, write_all
+from medialab_setup.jellyfin_client import JellyfinClient, ensure_library_roots
 from medialab_setup.preflight import Preflight, PreflightError, PreflightResult, Status
 from medialab_setup.prompts import Prompter, UrlOpener, open_in_browser
 from medialab_setup.report import answers_table, files_table
+from medialab_setup.scripts import (
+    BUILD_SCRIPT,
+    DOCTOR_SCRIPT,
+    PROVISION_SCRIPT,
+    compose_up_command,
+    run_or_raise,
+    script_command,
+)
 from medialab_setup.shell import Shell
 from medialab_setup.workspace import Workspace
 
 MINIMUM_FREE_BYTES = 50 * 1024**3
+VERIFY_WINDOW_SECONDS = 300
+VERIFY_INTERVAL_SECONDS = 15
 
 
 class Phase(str, Enum):
@@ -34,11 +45,11 @@ class Phase(str, Enum):
 
 
 PHASE_ORDER: tuple[Phase, ...] = tuple(Phase)
-IMPLEMENTED_THROUGH = Phase.GENERATE
+LAST_PHASE = PHASE_ORDER[-1]
 
 
-class NotImplementedPhase(RuntimeError):
-    """A phase the tool does not run yet."""
+class VerifyError(RuntimeError):
+    """The doctor never went green inside the verify window."""
 
 
 @dataclass(frozen=True)
@@ -46,9 +57,10 @@ class SetupOptions:
     mode: Mode = Mode.EXPRESS
     answers_file: Path | None = None
     dry_run: bool = False
-    stop_after: Phase = IMPLEMENTED_THROUGH
+    stop_after: Phase = LAST_PHASE
     assume_yes: bool = False
     interactive: bool = True
+    skip_host: bool = False
 
 
 @dataclass
@@ -61,6 +73,7 @@ class SetupContext:
     console: Console
     opener: UrlOpener = open_in_browser
     collected: Collected | None = None
+    make_jellyfin_client: type[JellyfinClient] = JellyfinClient
 
 
 def media_folders(media_host_dir: str) -> list[Path]:
@@ -135,19 +148,77 @@ def run_generate(ctx: SetupContext) -> None:
     )
 
 
+def _announce(ctx: SetupContext, command: list[str]) -> None:
+    ctx.console.print(f"$ {' '.join(command)}")
+
+
+def run_build(ctx: SetupContext) -> None:
+    command = script_command(ctx.shell, ctx.workspace, BUILD_SCRIPT)
+    _announce(ctx, command)
+    if ctx.options.dry_run:
+        return
+    run_or_raise(ctx.shell, command, BUILD_SCRIPT)
+
+
+def run_provision(ctx: SetupContext) -> None:
+    provision = script_command(ctx.shell, ctx.workspace, PROVISION_SCRIPT)
+    up = compose_up_command(ctx.workspace)
+    _announce(ctx, provision)
+    _announce(ctx, up)
+    answers = ctx.collected.answers if ctx.collected else None
+    if ctx.options.dry_run:
+        ctx.console.print("Would register the Movies and Shows library roots in Jellyfin.")
+        return
+    run_or_raise(ctx.shell, provision, PROVISION_SCRIPT)
+    run_or_raise(ctx.shell, up, "docker compose up")
+    if answers is None or not answers.media_host_dir or answers.jellyfin_api_key is None:
+        ctx.console.print("[yellow]warning:[/yellow] Jellyfin libraries not registered: no key")
+        return
+    client = ctx.make_jellyfin_client(answers.jellyfin_api_key.get_secret_value())
+    created = ensure_library_roots(client, answers.media_host_dir)
+    if created:
+        ctx.console.print(f"Jellyfin libraries created: {', '.join(created)}")
+    else:
+        ctx.console.print("Jellyfin libraries present.")
+
+
+def run_host(ctx: SetupContext) -> None:
+    ctx.console.print("Host autostart steps are not implemented yet; see docs/host-setup.md.")
+
+
+def run_verify(ctx: SetupContext) -> None:
+    command = script_command(ctx.shell, ctx.workspace, DOCTOR_SCRIPT)
+    _announce(ctx, command)
+    if ctx.options.dry_run:
+        return
+    waited = 0
+    while True:
+        if ctx.shell.stream(command) == 0:
+            ctx.console.print("Doctor green.")
+            return
+        if waited >= VERIFY_WINDOW_SECONDS:
+            raise VerifyError(f"doctor still failing after {VERIFY_WINDOW_SECONDS} s")
+        ctx.console.print(f"Doctor not green yet; retrying in {VERIFY_INTERVAL_SECONDS} s.")
+        ctx.shell.sleep(VERIFY_INTERVAL_SECONDS)
+        waited += VERIFY_INTERVAL_SECONDS
+
+
 PHASE_RUNNERS = {
     Phase.PREFLIGHT: run_preflight,
     Phase.COLLECT: run_collect,
     Phase.GENERATE: run_generate,
+    Phase.BUILD: run_build,
+    Phase.PROVISION: run_provision,
+    Phase.HOST: run_host,
+    Phase.VERIFY: run_verify,
 }
 
 
 def run_setup(ctx: SetupContext) -> None:
     stop_index = PHASE_ORDER.index(ctx.options.stop_after)
-    if stop_index > PHASE_ORDER.index(IMPLEMENTED_THROUGH):
-        raise NotImplementedPhase(
-            f"phases after {IMPLEMENTED_THROUGH.value} are not implemented yet"
-        )
     for phase in PHASE_ORDER[: stop_index + 1]:
         ctx.console.rule(phase.value)
+        if phase is Phase.HOST and ctx.options.skip_host:
+            ctx.console.print("Skipped (--skip-host).")
+            continue
         PHASE_RUNNERS[phase](ctx)

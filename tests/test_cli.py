@@ -96,13 +96,12 @@ def test_setup_dry_run_with_complete_env_exits_zero(
     assert "Dry run" in result.output
 
 
-def test_setup_refuses_unimplemented_stop_after(
+def test_setup_stop_after_is_validated(
     workspace_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _real_workspace(workspace_root)
     monkeypatch.setattr(cli, "make_shell", FakeShell)
     result = runner.invoke(
-        app, ["setup", "--workspace", str(workspace_root), "--stop-after", "verify"]
+        app, ["setup", "--workspace", str(workspace_root), "--stop-after", "nonsense"]
     )
     assert result.exit_code == 2
-    assert "not implemented" in result.output
