@@ -29,6 +29,18 @@ class Shell:
         """Run with output going straight to the terminal; returns the exit code."""
         return subprocess.run(args, timeout=timeout, check=False).returncode
 
+    def run_elevated(self, script_path: Path) -> int:
+        """Run a PowerShell script through UAC and wait; returns the launcher's exit code."""
+        launcher = (
+            f"Start-Process powershell -Verb RunAs -Wait -ArgumentList "
+            f"'-NoProfile -ExecutionPolicy Bypass -File \"{script_path}\"'"
+        )
+        return subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", launcher],
+            timeout=COMMAND_TIMEOUT_SECONDS,
+            check=False,
+        ).returncode
+
     def sleep(self, seconds: float) -> None:
         time.sleep(seconds)
 
