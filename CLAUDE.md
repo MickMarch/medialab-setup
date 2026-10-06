@@ -28,3 +28,9 @@ files; it never imports a service package.
 ## Module layout
 
 - `cli.py`: Typer command tree only.
+- `workspace.py`: `.env` targets from `docker-compose.yml` build services plus root and gluetun; state and backup dirs.
+- `envfile.py`: parse `.env.example` (order, comments, defaults) and `.env`; render one from the other.
+- `files.py`: atomic write with pre-write backup.
+- `answers.py`: the `Answers` model (asked, generated), secret-safe dumps.
+- `bindings.py`: (target, key) to answers-field table; owners first; `KEY_PAIRS` from `docs/secrets.md`.
+- `generate.py`: collect existing values, render every target, write all.
