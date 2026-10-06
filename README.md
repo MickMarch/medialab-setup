@@ -12,7 +12,7 @@ exists. Design: `docs/specs/setup-and-update-cli.md` in the workspace repo.
 | `update` | move a running stack to the current pins: check, snapshot, fetch, migrate `.env`, build, recreate, doctor, roll back on failure |
 | `plan` | `setup --dry-run` |
 
-Commands land in later releases; the scaffold ships only the command tree.
+`plan` is available; `setup` and `update` land with their issues.
 
 ## Running
 

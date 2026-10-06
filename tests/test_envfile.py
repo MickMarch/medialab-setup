@@ -87,3 +87,11 @@ def test_template_from_path(tmp_path: Path) -> None:
     path = tmp_path / ".env.example"
     path.write_text(TEMPLATE)
     assert EnvTemplate.from_path(path).default_of("KEY_A") == "default-a"
+
+
+def test_trailing_comments_survive_render() -> None:
+    template = EnvTemplate.parse("KEY=\n# --- alternative block\n# OTHER=1\n")
+    assert template.trailing == ("# --- alternative block", "# OTHER=1")
+    out = render_env(template, {}, existing={})
+    assert out.endswith("# --- alternative block\n# OTHER=1\n")
+    assert parse_env_values(out) == {"KEY": ""}
