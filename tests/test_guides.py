@@ -1,7 +1,7 @@
 from medialab_setup.answers import Answers
 from medialab_setup.bindings import ASKED_FIELDS, GENERATED_FIELDS
 from medialab_setup.guides import GUIDES, guide_for
-from medialab_setup.prompts import render_guide
+from medialab_setup.prompts import hint, render_guide
 
 
 def test_every_asked_field_has_a_guide_and_nothing_else_does() -> None:
@@ -28,3 +28,10 @@ def test_render_guide_lists_steps_and_url() -> None:
     assert "1." in text
     assert "themoviedb.org" in text
     assert "Looks like" in text
+
+
+def test_hint_reads_as_an_example_not_a_default() -> None:
+    assert hint("F:/Media") == "(e.g. F:/Media)"
+    assert hint("F:/Media", "Enter keeps the current value") == (
+        "(e.g. F:/Media; Enter keeps the current value)"
+    )

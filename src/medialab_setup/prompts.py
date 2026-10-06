@@ -13,6 +13,13 @@ from rich.console import Console
 from medialab_setup.guides import Guide
 
 KEEP_CURRENT_HINT = "Enter keeps the current value"
+EXAMPLE_PREFIX = "e.g. "
+
+
+def hint(help_text: str, *extra: str) -> str:
+    """The inline hint after a question, unmistakably an example rather than a default."""
+    parts = [f"{EXAMPLE_PREFIX}{help_text}", *extra]
+    return f"({'; '.join(parts)})"
 
 
 class Prompter(Protocol):
@@ -36,12 +43,12 @@ class QuestionaryPrompter:
 
     def text(self, message: str, default: str, help_text: str) -> str:
         self._require_tty()
-        answer = questionary.text(message, default=default, instruction=help_text).ask()
+        answer = questionary.text(message, default=default, instruction=hint(help_text)).ask()
         return default if answer is None else str(answer)
 
     def secret(self, message: str, has_current: bool, help_text: str) -> str:
         self._require_tty()
-        instruction = f"{help_text}; {KEEP_CURRENT_HINT}" if has_current else help_text
+        instruction = hint(help_text, KEEP_CURRENT_HINT) if has_current else hint(help_text)
         answer = questionary.password(message, instruction=instruction).ask()
         return "" if answer is None else str(answer)
 
