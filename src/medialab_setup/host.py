@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from medialab_setup.prompts import Prompter, UrlOpener, open_in_browser
 from medialab_setup.scripts import bash_executable
@@ -57,9 +57,10 @@ class HostRow:
 
 
 def git_bash_path(path: Path) -> str:
-    """C:\\x\\y as Git Bash spells it: /c/x/y."""
-    drive = path.drive.rstrip(":").lower()
-    rest = "/".join(path.parts[1:])
+    """C:\\x\\y as Git Bash spells it: /c/x/y. Parsed as a Windows path on any OS."""
+    windows = PureWindowsPath(str(path))
+    drive = windows.drive.rstrip(":").lower()
+    rest = "/".join(windows.parts[1:])
     return f"/{drive}/{rest}"
 
 
