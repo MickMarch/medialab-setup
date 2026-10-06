@@ -19,8 +19,9 @@ files; it never imports a service package.
   key-pair table in `docs/secrets.md` is encoded as a test fixture.
 - No secret is ever printed, logged, or written to `answers.toml`.
 - Every write is atomic with a backup under `.medialab-setup/backup/`.
-- Shell, git, Docker and HTTP are reached through small client classes and
-  mocked at that boundary in tests.
+- Shell, git, Docker and HTTP are reached through `Shell` and `CredentialChecker`
+  and faked at that boundary in tests (`tests/fakes.py`).
+- Media folder names come from `medialab-contracts`, never literals here.
 - Host steps (Task Scheduler, firewall, Docker Desktop settings) print the
   PowerShell they will run and ask once per step; automatic logon is never
   automated.
@@ -40,3 +41,6 @@ files; it never imports a service package.
 - `answers_file.py`: `.medialab-setup/answers.toml` read/write, non-secret only.
 - `collect.py`: phase Collect; precedence existing > answers file > prompt; express/custom.
 - `report.py`: Rich tables for answers and files; values shown only for non-secrets.
+- `shell.py`: `Shell`, the host boundary (processes, ports, disk, local HTTP); `FakeShell` in tests.
+- `preflight.py`: phase Preflight; prerequisite table with winget ids and download URLs; engine, submodule, port and host-qBittorrent rows.
+- `setup_flow.py`: phase order, `SetupOptions`, `SetupContext`, the runners; `IMPLEMENTED_THROUGH` gates `--stop-after`.

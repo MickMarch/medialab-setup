@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from collections import deque
 from pathlib import Path
 
 import pytest
+from fakes import ScriptedPrompter
 from pydantic import SecretStr
 
 from medialab_setup.answers import Answers
@@ -20,36 +20,6 @@ FIXTURE_BINDINGS = (
     Binding("svc-b", "API_KEY", "orchestrator_api_key"),
     Binding(GLUETUN_TARGET, "WIREGUARD_PRIVATE_KEY", "wireguard_private_key"),
 )
-
-
-class ScriptedPrompter:
-    """Answers prompts from a queue per field title; records what was shown."""
-
-    def __init__(self, script: dict[str, list[str]], confirms: bool = False) -> None:
-        self.script = {title: deque(values) for title, values in script.items()}
-        self.confirms = confirms
-        self.notes: list[str] = []
-        self.asked: list[str] = []
-
-    def _pop(self, message: str) -> str:
-        self.asked.append(message)
-        queue = self.script.get(message)
-        if not queue:
-            return ""
-        return queue.popleft()
-
-    def text(self, message: str, default: str, help_text: str) -> str:
-        answer = self._pop(message)
-        return answer or default
-
-    def secret(self, message: str, has_current: bool, help_text: str) -> str:
-        return self._pop(message)
-
-    def confirm(self, message: str, default: bool) -> bool:
-        return self.confirms
-
-    def note(self, text: str) -> None:
-        self.notes.append(text)
 
 
 class FakeChecker(CredentialChecker):

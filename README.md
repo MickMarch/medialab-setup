@@ -12,7 +12,7 @@ exists. Design: `docs/specs/setup-and-update-cli.md` in the workspace repo.
 | `update` | move a running stack to the current pins: check, snapshot, fetch, migrate `.env`, build, recreate, doctor, roll back on failure |
 | `plan` | `setup --dry-run` |
 
-`plan` is available; `setup` and `update` land with their issues.
+`plan` is available. `setup` runs through Generate today (`--stop-after` lists the phases); Build, Provision, Host and Verify land next, then `update`.
 
 ## Running
 
