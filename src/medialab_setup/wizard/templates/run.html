@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% set step = "run" %}
+{% block content %}
+<div class="panel">
+  <h2>Installing</h2>
+  <p class="muted">Writing configuration, building images, provisioning qBittorrent, starting the stack, then running the doctor until it is green.</p>
+  <div id="events" hx-get="/events?after=0" hx-trigger="load, every 1s" hx-swap="outerHTML">
+    {% include "partials/events.html" %}
+  </div>
+</div>
+{% endblock %}

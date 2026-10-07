@@ -117,6 +117,13 @@ class Preflight:
 
     # Prerequisites
 
+    def install(self, name: str) -> Row:
+        """Install one prerequisite by its table name and re-probe; unknown names fail."""
+        for prerequisite in PREREQUISITES:
+            if prerequisite.name == name:
+                return self._prerequisite_row(prerequisite)
+        return Row(Status.FAIL, name, "not a known prerequisite")
+
     def _installed(self, prerequisite: Prerequisite) -> bool:
         if prerequisite.command is not None:
             return self.shell.which(prerequisite.command) is not None

@@ -1,0 +1,9 @@
+<div id="events"
+     {% if not finished %}hx-get="/events?after={{ index }}" hx-trigger="every 1s" hx-swap="outerHTML"{% endif %}>
+  <p>Phase: <strong>{{ run.phase.value if run.phase else "starting" }}</strong> · state: <strong class="{{ 'ok' if run.state.value == 'succeeded' else ('fail' if run.state.value == 'failed' else '') }}">{{ run.state.value }}</strong></p>
+  <pre class="log" id="log">{% for line in run.log.lines %}{{ line }}
+{% endfor %}</pre>
+  {% if finished %}
+    <div class="actions"><a class="button" href="/result">See result</a></div>
+  {% endif %}
+</div>

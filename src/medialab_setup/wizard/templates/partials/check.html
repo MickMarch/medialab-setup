@@ -1,0 +1,5 @@
+{% if outcome == "accepted" %}<span class="accepted">accepted</span>
+{% elif outcome == "rejected" %}<span class="rejected">{{ detail }}</span>
+{% elif outcome == "unverified" %}<span class="unverified">could not reach the service; unverified</span>
+{% elif outcome == "set" %}<span class="muted">set</span>
+{% endif %}

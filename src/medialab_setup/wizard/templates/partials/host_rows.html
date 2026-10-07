@@ -1,0 +1,30 @@
+<div id="host-steps">
+  <table>
+    <thead><tr><th></th><th>Step</th><th>Detail</th></tr></thead>
+    <tbody>
+    {% for row in host_rows %}
+      <tr>
+        <td class="{{ 'ok' if row.outcome.value in ('ok', 'applied') else ('warn' if row.outcome.value in ('pending', 'manual') else 'fail') }}">{{ row.outcome.value }}</td>
+        <td>{{ row.name }}</td>
+        <td>
+          {{ row.detail }}
+          {% if row.url %}<div><a href="{{ row.url }}" target="_blank" rel="noopener">{{ row.url }}</a></div>{% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% set pending = host_rows | selectattr("outcome.value", "equalto", "pending") | list %}
+  {% set manual = host_rows | selectattr("manual") | list %}
+  <div class="actions">
+    {% if pending %}
+      <button hx-post="/host/apply" hx-target="#host-steps" hx-swap="outerHTML" hx-indicator="#host-busy">Apply {{ pending | length }} step{{ 's' if pending | length != 1 }}</button>
+      <span id="host-busy" class="htmx-indicator muted">Applying; a Windows permission prompt will appear once.</span>
+    {% elif not manual %}
+      <span class="ok">Every host step is in place. The stack comes back on its own after a reboot.</span>
+    {% endif %}
+    {% if manual %}
+      <span class="muted">{{ manual | length }} step{{ 's' if manual | length != 1 }} need{{ '' if manual | length != 1 else 's' }} you: follow the instructions above, then reopen setup.cmd to confirm.</span>
+    {% endif %}
+  </div>
+</div>

@@ -63,6 +63,8 @@ class FakeShell(Shell):
     def stream(self, args: list[str], *, timeout: float = 0) -> int:
         self.streams.append(args)
         joined = " ".join(args)
+        if self.output_sink is not None:
+            self.output_sink(f"[fake] {Path(args[-1]).name}")
         for fragment, codes in self.stream_codes.items():
             if fragment in joined:
                 return codes.popleft() if len(codes) > 1 else codes[0]

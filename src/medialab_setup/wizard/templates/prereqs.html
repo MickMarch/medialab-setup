@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% set step = "prereqs" %}
+{% block content %}
+<div class="panel">
+  <h2>Prerequisites</h2>
+  <p class="muted">What this machine has and what is missing. Install buttons run winget; a sign-out may be needed for Docker Desktop, after which you reopen setup.cmd.</p>
+  <table>
+    <thead><tr><th></th><th>Check</th><th>Detail</th><th></th></tr></thead>
+    <tbody>
+    {% for row in rows %}
+      {% include "partials/row.html" %}
+    {% endfor %}
+    </tbody>
+  </table>
+  <div class="actions">
+    <a class="button secondary" href="/prereqs">Re-check</a>
+    {% if failed %}
+      <span class="fail">Fix the failing rows before continuing.</span>
+    {% else %}
+      <a class="button" href="/credentials">Continue</a>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -37,6 +37,7 @@ class Outcome(str, Enum):
     MANUAL = "manual"
     SKIPPED = "skipped"
     FAILED = "failed"
+    PENDING = "pending"
 
 
 @dataclass(frozen=True)
@@ -54,6 +55,8 @@ class HostRow:
     outcome: Outcome
     name: str
     detail: str
+    url: str | None = None
+    manual: bool = False
 
 
 def git_bash_path(path: Path) -> str:
@@ -196,6 +199,26 @@ class HostPhase:
         self.interactive = interactive
         self.opener = opener
 
+    def status(self) -> list[HostRow]:
+        """Check every step and change nothing: in place, pending (automatable), or manual."""
+        rows: list[HostRow] = []
+        for step in host_steps(self.workspace, self.shell):
+            if self._check(step):
+                rows.append(HostRow(Outcome.OK, step.name, "in place"))
+            elif step.apply is None:
+                rows.append(
+                    HostRow(
+                        Outcome.MANUAL,
+                        step.name,
+                        step.manual_text or "",
+                        url=step.manual_url,
+                        manual=True,
+                    )
+                )
+            else:
+                rows.append(HostRow(Outcome.PENDING, step.name, "not in place; Apply sets it up"))
+        return rows
+
     def run(self) -> list[HostRow]:
         steps = host_steps(self.workspace, self.shell)
         rows: dict[str, HostRow] = {}
@@ -238,7 +261,9 @@ class HostPhase:
     def _manual(self, step: HostStep) -> HostRow:
         self.prompter.note(f"[bold]{step.name}[/bold]\n{step.manual_text}")
         if self.dry_run or not self.interactive:
-            return HostRow(Outcome.MANUAL, step.name, step.manual_text or "")
+            return HostRow(
+                Outcome.MANUAL, step.name, step.manual_text or "", url=step.manual_url, manual=True
+            )
         if step.manual_url and self.prompter.confirm(f"Open {step.manual_url}?", default=True):
             self.opener(step.manual_url)
         self.prompter.confirm("Done? Enter to recheck.", default=True)

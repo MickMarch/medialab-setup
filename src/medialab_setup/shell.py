@@ -6,6 +6,7 @@ import shutil
 import socket
 import subprocess
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 import httpx
@@ -17,6 +18,9 @@ LOOPBACK = "127.0.0.1"
 
 
 class Shell:
+    # When set, streamed command output goes here line by line instead of the terminal.
+    output_sink: Callable[[str], None] | None = None
+
     def which(self, name: str) -> str | None:
         return shutil.which(name)
 
@@ -26,8 +30,20 @@ class Shell:
         return subprocess.run(args, capture_output=True, text=True, timeout=timeout, check=False)
 
     def stream(self, args: list[str], *, timeout: float = COMMAND_TIMEOUT_SECONDS) -> int:
-        """Run with output going straight to the terminal; returns the exit code."""
-        return subprocess.run(args, timeout=timeout, check=False).returncode
+        """Output goes to the terminal, or to `output_sink` when set. Returns the exit code."""
+        if self.output_sink is None:
+            return subprocess.run(args, timeout=timeout, check=False).returncode
+        with subprocess.Popen(
+            args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            errors="replace",
+        ) as process:
+            assert process.stdout is not None
+            for line in process.stdout:
+                self.output_sink(line.rstrip("\r\n"))
+            return process.wait(timeout=timeout)
 
     def run_elevated(self, script_path: Path) -> int:
         """Run a PowerShell script through UAC and wait; returns the launcher's exit code."""

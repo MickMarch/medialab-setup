@@ -200,3 +200,51 @@ def update(
     except (UpdateError, GitError, ScriptError, CollectError) as error:
         console.print(f"[red]{error}[/red]")
         raise typer.Exit(EXIT_FAILURE) from error
+
+
+WIZARD_HOST = "127.0.0.1"
+WIZARD_POLL_SECONDS = 1.0
+PortOption = Annotated[int, typer.Option("--port", help="Loopback port; 0 picks a free one.")]
+NoBrowserOption = Annotated[
+    bool, typer.Option("--no-browser", help="Print the URL instead of opening the browser.")
+]
+
+
+@app.command()
+def wizard(
+    workspace: WorkspaceOption = None,
+    port: PortOption = 0,
+    no_browser: NoBrowserOption = False,
+) -> None:
+    """Open the browser-based installer; exits when you close it or after idling."""
+    import socket
+    import threading
+    import time
+    import webbrowser
+
+    import uvicorn
+
+    from medialab_setup.wizard.app import WizardState, create_app, should_stop
+
+    ws = find_workspace(workspace)
+    state = WizardState(workspace=ws, shell=make_shell(), checker=CredentialChecker())
+    if port == 0:
+        with socket.socket() as probe:
+            probe.bind((WIZARD_HOST, 0))
+            port = probe.getsockname()[1]
+    server = uvicorn.Server(
+        uvicorn.Config(create_app(state), host=WIZARD_HOST, port=port, log_level="warning")
+    )
+    thread = threading.Thread(target=server.run, name="medialab-setup-wizard", daemon=True)
+    thread.start()
+    url = f"http://{WIZARD_HOST}:{port}/?t={state.token}"
+    console.print(f"Setup is open at {url}")
+    if not no_browser:
+        webbrowser.open(url)
+    try:
+        while not should_stop(state):
+            time.sleep(WIZARD_POLL_SECONDS)
+    except KeyboardInterrupt:
+        pass
+    server.should_exit = True
+    thread.join()
