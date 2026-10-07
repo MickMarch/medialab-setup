@@ -62,7 +62,7 @@ markers = [
 ]
 
 [tool.uv.sources]
-medialab-contracts = { git = "https://github.com/MickMarch/medialab-contracts.git", rev = "v1.2.0" }
+medialab-contracts = { git = "https://github.com/MickMarch/medialab-contracts.git", rev = "v1.3.0" }
 
 [dependency-groups]
 dev = [

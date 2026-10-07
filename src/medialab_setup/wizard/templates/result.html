@@ -2,7 +2,10 @@
 {% set step = "result" %}
 {% block content %}
 <div class="panel">
-  {% if succeeded %}
+  {% if succeeded and fix %}
+    <h2 class="ok">Credential replaced</h2>
+    <p>The service accepted the new key and the stack reports it as ok.</p>
+  {% elif succeeded %}
     <h2 class="ok">The stack is up</h2>
     <p>The doctor is green. Open the web UI at <a href="{{ web_ui_url }}" target="_blank" rel="noopener">{{ web_ui_url }}</a>, or talk to the bot in Discord.</p>
   {% else %}
@@ -11,11 +14,13 @@
     <p class="muted">Fix the cause and run setup again; every value already written is kept, so only what is missing is asked.</p>
   {% endif %}
 </div>
+{% if not fix %}
 <div class="panel">
   <h2>Next steps: start with Windows</h2>
   <p class="muted">So the whole stack is up after a reboot with nobody at the keyboard: Jellyfin runs as a system task at boot, the desktop locks right after automatic logon, Docker Desktop starts on sign-in, the doctor records a log after logon, and the web UI is reachable from your LAN. Design and verification: <code>{{ host_setup_doc }}</code>.</p>
   {% include "partials/host_rows.html" %}
 </div>
+{% endif %}
 <div class="panel">
   <details><summary class="toggle">Full log</summary>
     <pre class="log">{% for line in run.log.lines %}{{ line }}

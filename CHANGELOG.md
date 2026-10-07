@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `check-credentials`: reads the gateway's credential health and raises a
+  Windows toast per invalid key, once a day, with a button that opens the
+  wizard on that field. A new host step registers it as a scheduled task
+  every thirty minutes.
+- `wizard --fix <name>` (and `setup.cmd --fix <name>`): the credentials page
+  with only that field, the new value checked against its service, written
+  to its `.env`, the owning container recreated, and the gateway polled until
+  the key reads ok. No build, no provision (MickMarch/medialab#136).
+
 ## [0.2.0] - 2026-10-07
 
 ### Added

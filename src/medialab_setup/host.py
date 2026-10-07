@@ -26,6 +26,8 @@ DOCKER_SETTINGS_HINT = "Docker Desktop > Settings > General > Start Docker Deskt
 JELLYFIN_TASK = "medialab-jellyfin-server"
 LOCK_TASK = "medialab-lock-at-logon"
 DOCTOR_TASK = "medialab-doctor-after-logon"
+CREDENTIAL_TASK = "medialab-credential-check"
+CREDENTIAL_CHECK_MINUTES = 30
 FIREWALL_RULE = "medialab-web LAN"
 DOCTOR_BOOT_LOG = ".doctor-boot.log"
 WEB_PORT = 8081
@@ -164,6 +166,19 @@ def host_steps(workspace: Workspace, shell: Shell) -> tuple[HostStep, ...]:
                 '$trigger = New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\\$env:USERNAME"\n'
                 '$trigger.Delay = "PT4M"\n'
                 f'Register-ScheduledTask -TaskName "{DOCTOR_TASK}" -Action $action -Trigger $trigger '
+                "-RunLevel Limited -Force | Out-Null\n"
+            ),
+        ),
+        HostStep(
+            name="Credential check (toast when a key fails)",
+            check=_task_exists(CREDENTIAL_TASK),
+            apply=(
+                f'$bash = "{bash}"\n'
+                f"$action = New-ScheduledTaskAction -Execute $bash -Argument "
+                f"\"-lc 'cd {repo} && bin/medialab-setup.sh check-credentials'\"\n"
+                f"$trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(5) "
+                f"-RepetitionInterval (New-TimeSpan -Minutes {CREDENTIAL_CHECK_MINUTES})\n"
+                f'Register-ScheduledTask -TaskName "{CREDENTIAL_TASK}" -Action $action -Trigger $trigger '
                 "-RunLevel Limited -Force | Out-Null\n"
             ),
         ),

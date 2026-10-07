@@ -11,6 +11,8 @@ exists. Design: `docs/specs/setup-and-update-cli.md` in the workspace repo.
 | `setup` | fresh clone to a verified running stack: preflight, collect, render every `.env`, build, provision, host autostart, doctor |
 | `update` | move a running stack to the current pins: check, snapshot, fetch, migrate `.env`, build, recreate, doctor, roll back on failure |
 | `wizard` | the same install in a browser page on loopback; `setup.cmd` at the workspace root launches it |
+| `wizard --fix <name>` | replace one credential the stack reports invalid: one field, check, write, recreate its container, verify |
+| `check-credentials` | toast each invalid credential once a day; registered as a scheduled task by the host step |
 | `plan` | collect and show what `setup` would write, writing nothing |
 
 ## Running
