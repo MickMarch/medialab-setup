@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 
+from medialab_setup.compose_project import ProjectConflict, ensure_project_is_ours
 from medialab_setup.prompts import Prompter, UrlOpener, open_in_browser
 from medialab_setup.shell import Shell
 from medialab_setup.workspace import Workspace
@@ -109,6 +110,7 @@ class Preflight:
             result.rows.append(self._prerequisite_row(prerequisite))
         result.rows.append(self._submodules_row())
         result.rows.append(self._docker_engine_row())
+        result.rows.append(self._compose_project_row())
         result.rows.extend(self._port_rows())
         result.rows.append(self._host_qbittorrent_row())
         return result
@@ -190,6 +192,13 @@ class Preflight:
         if completed.returncode != 0:
             return Row(Status.FAIL, "docker engine", "not reachable; start Docker Desktop")
         return Row(Status.OK, "docker engine", completed.stdout.strip())
+
+    def _compose_project_row(self) -> Row:
+        try:
+            name = ensure_project_is_ours(self.shell, self.workspace)
+        except ProjectConflict as conflict:
+            return Row(Status.FAIL, "compose project", str(conflict))
+        return Row(Status.OK, "compose project", f"'{name}' is free or ours")
 
     def _running_services(self) -> set[str]:
         completed = self.shell.run(

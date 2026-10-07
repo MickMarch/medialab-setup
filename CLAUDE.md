@@ -51,6 +51,7 @@ files; it never imports a service package.
 - `setup_flow.py`: phase order, `SetupOptions`, `SetupContext`, one runner per phase; `--skip-host`, `--stop-after`.
 - `scripts.py`: Git Bash resolution (never WSL bash), the bin/ script and compose commands, `run_or_raise`.
 - `host.py`: phase Host; `HostStep` table mirroring `docs/host-setup.md` (check script, apply script or manual text); elevated applies batched into one UAC prompt via `Shell.run_elevated`.
+- `compose_project.py`: project name resolution (`COMPOSE_PROJECT_NAME` over the file's `name:`) and the ownership guard against another directory's running stack.
 - `gitops.py`: `Git` over `Shell`; only the calls update needs.
 - `update_flow.py`: check table (running / pinned / target), snapshot, ff-only fetch, `.env` migration, apply, verify, rollback to the snapshot commit and backed-up `.env` files.
 - `jellyfin_client.py`: list and create Jellyfin libraries on the host; `ensure_library_roots` registers Movies and Shows once, never `_incoming`.

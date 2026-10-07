@@ -35,6 +35,7 @@ class FakeShell(Shell):
         self.stream_codes: dict[str, deque[int]] = {}
         self.slept: list[float] = []
         self.elevated_scripts: list[str] = []
+        self.compose_ls_json = "[]"
 
     def which(self, name: str) -> str | None:
         return f"C:/bin/{name}.exe" if name in self.commands else None
@@ -49,6 +50,8 @@ class FakeShell(Shell):
             command = self.install_adds.get(args[-1])
             if command:
                 self.commands.add(command)
+        if args[:3] == ["docker", "compose", "ls"] and "compose ls" not in self.results:
+            return subprocess.CompletedProcess(args, 0, self.compose_ls_json, "")
         for fragment, result in self.results.items():
             if fragment in joined:
                 return result

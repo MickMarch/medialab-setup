@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `setup` and `update` refuse to run compose when the compose project (the
+  `name:` in `docker-compose.yml`, or `COMPOSE_PROJECT_NAME`) is already owned
+  by another directory. Two clones share one project otherwise, and `up` in
+  the second takes over the first's containers and named volumes.
+
 ## [0.1.1] - 2026-10-06
 
 ### Fixed

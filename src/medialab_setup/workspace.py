@@ -31,6 +31,7 @@ BACKUP_DIR = "backup"
 BACKUP_TIMESTAMP_FORMAT = "%Y%m%dT%H%M%SZ"
 COMPOSE_SERVICES_KEY = "services"
 COMPOSE_BUILD_KEY = "build"
+COMPOSE_NAME_KEY = "name"
 COMPOSE_PORTS_KEY = "ports"
 PORT_SEPARATOR = ":"
 # "host:container" has two parts; "ip:host:container" has three.
@@ -69,6 +70,14 @@ class Workspace:
         compose = yaml.safe_load(self.compose_path.read_text(encoding="utf-8")) or {}
         services = compose.get(COMPOSE_SERVICES_KEY, {})
         return {name: (spec or {}) for name, spec in services.items()}
+
+    def compose_name(self) -> str | None:
+        """The top-level `name:` of the compose file, when set."""
+        if not self.compose_path.exists():
+            raise FileNotFoundError(self.compose_path)
+        compose = yaml.safe_load(self.compose_path.read_text(encoding="utf-8")) or {}
+        value = compose.get(COMPOSE_NAME_KEY)
+        return str(value) if value else None
 
     def built_services(self) -> list[str]:
         return [name for name, spec in self._services().items() if COMPOSE_BUILD_KEY in spec]
