@@ -274,7 +274,13 @@ def test_every_required_field_has_a_guide(name: str) -> None:
     assert guide_for(name).title
 
 
-HOST_OK_FRAGMENTS = ("JellyfinTray", "AutoAdminLogon", "AutoStart", "medialab-doctor-after-logon")
+HOST_OK_FRAGMENTS = (
+    "JellyfinTray",
+    "AutoAdminLogon",
+    "AutoStart",
+    "medialab-doctor-after-logon",
+    "medialab-credential-check",
+)
 
 
 def _host_ready(shell: object, ok: tuple[str, ...]) -> None:
@@ -286,6 +292,7 @@ def _host_ready(shell: object, ok: tuple[str, ...]) -> None:
         "AutoAdminLogon",
         "AutoStart",
         "medialab-doctor-after-logon",
+        "medialab-credential-check",
         "medialab-web LAN",
     ):
         shell.expect(fragment, stdout="ok\n" if fragment in ok else "")
@@ -344,3 +351,82 @@ def test_manual_host_steps_show_instructions_and_link(workspace_root: Path, tmp_
     assert "sysinternals/downloads/autologon" in html
     assert "Start Docker Desktop when you sign in" in html
     assert "need you" in html
+
+
+def _fix_client(
+    root: Path, name: str, checker: CredentialChecker | None = None
+) -> tuple[TestClient, WizardState]:
+    root.mkdir(exist_ok=True)
+    state = WizardState(
+        workspace=_workspace(root),
+        shell=_shell(),
+        checker=checker or ScriptedChecker(),
+        make_jellyfin_client=FakeJellyfin,
+        fix=name,
+    )
+    return TestClient(create_app(state), follow_redirects=False), state
+
+
+def test_fix_mode_enters_on_the_credentials_page_with_one_field(workspace_root: Path) -> None:
+    client, state = _fix_client(workspace_root, "tmdb_api_key")
+    response = client.get(f"/?t={state.token}")
+    assert response.headers["location"] == "/credentials"
+    html = client.get("/credentials").text
+    assert "Replace a credential" in html
+    assert 'name="tmdb_api_key"' in html
+    assert 'name="jellyfin_api_key"' not in html
+    assert "Replace and restart" in html
+    assert "torrent-downloader" in html
+    assert 'class="help" open' in html
+
+
+def test_fix_submit_rewrites_the_key_recreates_the_owner_and_verifies(
+    workspace_root: Path,
+) -> None:
+    from medialab_setup.credential_check import GATEWAY_HEALTH_URL
+
+    client, state = _fix_client(workspace_root, "tmdb_api_key")
+    (workspace_root / "torrent-downloader" / ".env").write_text("TMDB_API_KEY=old\n")
+    shell = state.shell
+    assert isinstance(shell, FakeShell)
+    shell.http[GATEWAY_HEALTH_URL] = '{"credentials": {"tmdb_api_key": {"status": "ok"}}}'
+    client.get(f"/?t={state.token}")
+    response = client.post("/credentials", data={"tmdb_api_key": "new-key"})
+    assert response.status_code == 303 and response.headers["location"] == "/run"
+    assert state.run is not None and state.run.thread is not None
+    state.run.thread.join(timeout=10)
+    assert state.run.state is RunState.SUCCEEDED, state.run.log.lines
+    written = parse_env_values((workspace_root / "torrent-downloader" / ".env").read_text())
+    assert written["TMDB_API_KEY"] == "new-key"
+    streamed = [" ".join(c) for c in shell.streams]
+    assert any(c.endswith("up -d torrent-downloader") for c in streamed)
+    assert not any("medialab-build.sh" in c for c in streamed)
+    result = client.get("/result").text
+    assert "Credential replaced" in result
+    assert "Next steps" not in result
+    assert "new-key" not in result
+
+
+def test_fix_submit_rejects_an_empty_or_refused_value(workspace_root: Path) -> None:
+    client, state = _fix_client(workspace_root, "tmdb_api_key", ScriptedChecker(bad={"bad"}))
+    client.get(f"/?t={state.token}")
+    assert "is required" in client.post("/credentials", data={"tmdb_api_key": ""}).text
+    assert "was rejected" in client.post("/credentials", data={"tmdb_api_key": "bad"}).text
+    assert state.run is None
+
+
+def test_fix_fails_when_the_service_still_rejects_the_key(workspace_root: Path) -> None:
+    from medialab_setup.credential_check import GATEWAY_HEALTH_URL
+
+    client, state = _fix_client(workspace_root, "tmdb_api_key")
+    shell = state.shell
+    assert isinstance(shell, FakeShell)
+    shell.http[GATEWAY_HEALTH_URL] = (
+        '{"credentials": {"tmdb_api_key": {"status": "invalid", "detail": "HTTP 401"}}}'
+    )
+    client.get(f"/?t={state.token}")
+    client.post("/credentials", data={"tmdb_api_key": "still-bad"})
+    assert state.run is not None and state.run.thread is not None
+    state.run.thread.join(timeout=10)
+    assert state.run.state is RunState.FAILED
+    assert "still rejected" in (state.run.error or "")

@@ -210,11 +210,35 @@ NoBrowserOption = Annotated[
 ]
 
 
+FixOption = Annotated[
+    str | None,
+    typer.Option("--fix", help="Open the credentials page on this one field and repair it."),
+]
+EXIT_PROBLEMS = 4
+
+
+@app.command("check-credentials")
+def check_credentials_cmd(workspace: WorkspaceOption = None) -> None:
+    """Read the gateway's credential health; toast each invalid key once a day."""
+    from medialab_setup.credential_check import check_credentials
+
+    ws = find_workspace(workspace)
+    found, toasted = check_credentials(ws, make_shell())
+    for problem in found:
+        console.print(f"[red]invalid[/red] {problem.title}: {problem.detail}")
+    if toasted:
+        console.print(f"Toasted: {', '.join(toasted)}")
+    if found:
+        raise typer.Exit(EXIT_PROBLEMS)
+    console.print("All credentials ok.")
+
+
 @app.command()
 def wizard(
     workspace: WorkspaceOption = None,
     port: PortOption = 0,
     no_browser: NoBrowserOption = False,
+    fix: FixOption = None,
 ) -> None:
     """Open the browser-based installer; exits when you close it or after idling."""
     import socket
@@ -227,7 +251,7 @@ def wizard(
     from medialab_setup.wizard.app import WizardState, create_app, should_stop
 
     ws = find_workspace(workspace)
-    state = WizardState(workspace=ws, shell=make_shell(), checker=CredentialChecker())
+    state = WizardState(workspace=ws, shell=make_shell(), checker=CredentialChecker(), fix=fix)
     if port == 0:
         with socket.socket() as probe:
             probe.bind((WIZARD_HOST, 0))

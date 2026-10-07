@@ -4,6 +4,7 @@ from pathlib import Path
 from fakes import FakeShell, ScriptedPrompter
 
 from medialab_setup.host import (
+    CREDENTIAL_TASK,
     DOCTOR_TASK,
     FIREWALL_RULE,
     JELLYFIN_TASK,
@@ -24,6 +25,7 @@ ALL_OK_FRAGMENTS = (
     "AutoAdminLogon",
     "AutoStart",
     DOCTOR_TASK,
+    CREDENTIAL_TASK,
     FIREWALL_RULE,
 )
 
@@ -135,3 +137,11 @@ def test_non_interactive_never_applies(workspace_root: Path) -> None:
     rows = HostPhase(Workspace(workspace_root), shell, ScriptedPrompter(), interactive=False).run()
     assert Outcome.APPLIED not in _outcomes(rows).values()
     assert shell.elevated_scripts == []
+
+
+def test_credential_check_task_is_a_non_elevated_step(workspace_root: Path) -> None:
+    steps = host_steps(Workspace(workspace_root), FakeShell(existing_paths={GIT_BASH}))
+    step = next(s for s in steps if CREDENTIAL_TASK in s.check)
+    assert not step.elevated
+    assert "check-credentials" in (step.apply or "")
+    assert "RepetitionInterval" in (step.apply or "")

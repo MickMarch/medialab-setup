@@ -23,6 +23,7 @@ from medialab_setup.preflight import PREREQUISITES, Preflight, Row
 from medialab_setup.shell import Shell
 from medialab_setup.wizard.log import LineLog
 from medialab_setup.wizard.prompter import WebPrompter, extra_field_name
+from medialab_setup.wizard.repair import owning_service, start_repair
 from medialab_setup.wizard.runner import Run, RunState, start_run
 from medialab_setup.workspace import Workspace
 
@@ -48,6 +49,7 @@ class WizardState:
     token: str = field(default_factory=lambda: secrets.token_urlsafe(TOKEN_BYTES))
     make_jellyfin_client: type[JellyfinClient] = JellyfinClient
     run: Run | None = None
+    fix: str | None = None
     last_activity: float = field(default_factory=time.monotonic)
     done: bool = False
 
@@ -149,7 +151,8 @@ def create_app(state: WizardState) -> FastAPI:
     def enter(request: Request) -> Response:
         if request.query_params.get(TOKEN_QUERY) != state.token:
             raise HTTPException(HTTPStatus.FORBIDDEN, "open the URL printed by medialab-setup")
-        response = RedirectResponse("/prereqs", status_code=HTTPStatus.SEE_OTHER)
+        first_page = "/credentials" if state.fix else "/prereqs"
+        response = RedirectResponse(first_page, status_code=HTTPStatus.SEE_OTHER)
         response.set_cookie(TOKEN_COOKIE, state.token, httponly=True, samesite="strict")
         state.touch()
         return response
@@ -195,9 +198,11 @@ def create_app(state: WizardState) -> FastAPI:
         return render(
             request,
             "credentials.html",
-            fields=field_views(state.workspace),
-            extras=extra_views(state.workspace),
+            fields=_fields_for(state),
+            extras=[] if state.fix else extra_views(state.workspace),
             errors=[],
+            fix=state.fix,
+            fix_service=owning_service(state.fix) if state.fix else None,
         )
 
     @app.post(
@@ -234,6 +239,8 @@ def create_app(state: WizardState) -> FastAPI:
     )
     async def submit(request: Request) -> Response:
         form = {k: str(v) for k, v in (await request.form()).items()}
+        if state.fix:
+            return _submit_fix(request, form)
         missing = missing_required(form, state.workspace)
         rejected = [
             guide_for(name).title
@@ -261,6 +268,28 @@ def create_app(state: WizardState) -> FastAPI:
                 form,
                 make_jellyfin_client=state.make_jellyfin_client,
             )
+        return RedirectResponse("/run", status_code=HTTPStatus.SEE_OTHER)
+
+    def _submit_fix(request: Request, form: dict[str, str]) -> Response:
+        name = state.fix or ""
+        value = form.get(name, "").strip()
+        errors: list[str] = []
+        if not value:
+            errors.append(f"{guide_for(name).title} is required")
+        elif guide_for(name).check is not None and _rejected(state.checker, name, value):
+            errors.append(f"{guide_for(name).title} was rejected by the service")
+        if errors:
+            return render(
+                request,
+                "credentials.html",
+                fields=_fields_for(state),
+                extras=[],
+                errors=errors,
+                fix=name,
+                fix_service=owning_service(name),
+            )
+        if state.run is None or state.run.finished:
+            state.run = start_repair(state.workspace, state.shell, name, value)
         return RedirectResponse("/run", status_code=HTTPStatus.SEE_OTHER)
 
     @app.get(
@@ -309,7 +338,8 @@ def create_app(state: WizardState) -> FastAPI:
             succeeded=state.run.state is RunState.SUCCEEDED,
             web_ui_url=WEB_UI_URL,
             host_setup_doc=HOST_SETUP_DOC,
-            host_rows=_host_status(state),
+            host_rows=[] if state.fix else _host_status(state),
+            fix=state.fix,
         )
 
     @app.post(
@@ -340,6 +370,15 @@ def create_app(state: WizardState) -> FastAPI:
         return render(request, "done.html")
 
     return app
+
+
+def _fields_for(state: WizardState) -> list[FieldView]:
+    views = field_views(state.workspace)
+    if not state.fix:
+        return views
+    return [
+        FieldView(v.field, v.guide, True, STATE_EMPTY, "") for v in views if v.field == state.fix
+    ]
 
 
 def _host_status(state: WizardState) -> list[HostRow]:
