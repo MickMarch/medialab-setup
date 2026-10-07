@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `wizard` command: a browser-based installer on loopback. Prerequisites page
+  with Install buttons, one credentials page with a help popover per field and
+  live checks on change, an Advanced section for every template tunable, a
+  streamed run page and a doctor result page. Same phases as `setup`, driven
+  through the `Prompter` protocol; token-guarded; exits when closed or idle
+  (MickMarch/medialab#135).
+
 ## [0.1.3] - 2026-10-07
 
 ### Fixed

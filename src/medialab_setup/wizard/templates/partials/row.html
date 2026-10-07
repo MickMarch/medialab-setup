@@ -1,0 +1,10 @@
+<tr id="row-{{ row.name | replace(' ', '-') }}">
+  <td class="{{ row.status.value }}">{{ row.status.value }}</td>
+  <td>{{ row.name }}</td>
+  <td>{{ row.detail }}</td>
+  <td>
+    {% if row.status.value == "fail" and installable is defined and row.name in installable %}
+      <button hx-post="/prereqs/install/{{ row.name | urlencode }}" hx-target="closest tr" hx-swap="outerHTML">Install</button>
+    {% endif %}
+  </td>
+</tr>

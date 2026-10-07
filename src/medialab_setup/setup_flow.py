@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
+import httpx
 from medialab_contracts import MEDIA_TYPE_SUBDIRS, STAGING_SUBDIR
 from rich.console import Console
 from rich.table import Table
@@ -24,6 +25,7 @@ from medialab_setup.scripts import (
     DOCTOR_SCRIPT,
     PROVISION_SCRIPT,
     VERIFY_WINDOW_SECONDS,
+    ScriptError,
     compose_up_command,
     run_or_raise,
     script_command,
@@ -176,7 +178,10 @@ def run_provision(ctx: SetupContext) -> None:
         ctx.console.print("[yellow]warning:[/yellow] Jellyfin libraries not registered: no key")
         return
     client = ctx.make_jellyfin_client(answers.jellyfin_api_key.get_secret_value())
-    created = ensure_library_roots(client, answers.media_host_dir)
+    try:
+        created = ensure_library_roots(client, answers.media_host_dir)
+    except httpx.HTTPError as error:
+        raise ScriptError(f"Jellyfin library registration failed: {error}") from error
     if created:
         ctx.console.print(f"Jellyfin libraries created: {', '.join(created)}")
     else:

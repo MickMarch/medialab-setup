@@ -31,6 +31,9 @@ files; it never imports a service package.
   is probed through its task file (access denied means it exists), a
   firewall rule through `netsh`'s exit code.
 
+- The wizard binds loopback only and requires its per-run token on every
+  request; it never echoes a secret back to the page.
+
 ## Module layout
 
 - `cli.py`: Typer command tree only.
@@ -54,4 +57,5 @@ files; it never imports a service package.
 - `compose_project.py`: project name resolution (`COMPOSE_PROJECT_NAME` over the file's `name:`) and the ownership guard against another directory's running stack.
 - `gitops.py`: `Git` over `Shell`; only the calls update needs.
 - `update_flow.py`: check table (running / pinned / target), snapshot, ff-only fetch, `.env` migration, apply, verify, rollback to the snapshot commit and backed-up `.env` files.
+- `wizard/`: FastAPI + Jinja + htmx front end over the same phases. `app.py` routes and token guard, `runner.py` background run into a `LineLog`, `prompter.py` the `WebPrompter` answering from the form. Owns no rules: fields, help, checks and phases come from the CLI modules.
 - `jellyfin_client.py`: list and create Jellyfin libraries on the host; `ensure_library_roots` registers Movies and Shows once, never `_incoming`.
