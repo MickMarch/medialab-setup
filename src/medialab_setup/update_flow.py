@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from rich.console import Console
 from rich.table import Table
 
-from medialab_setup.bindings import BINDINGS, Binding
+from medialab_setup.bindings import BINDINGS, REQUIRED_FIELDS, Binding
 from medialab_setup.collect import CollectError
 from medialab_setup.compose_project import ProjectConflict, ensure_project_is_ours
 from medialab_setup.envfile import EnvTemplate, parse_env_values
@@ -59,7 +59,17 @@ class ServiceRow:
 
     @property
     def moves(self) -> bool:
+        """The pin will change."""
         return self.pinned != self.target
+
+    @property
+    def stale(self) -> bool:
+        """The running image is not the pinned version (or nothing is running)."""
+        return self.running != self.pinned
+
+    @property
+    def needs_work(self) -> bool:
+        return self.moves or self.stale
 
 
 @dataclass
@@ -210,7 +220,11 @@ def migrate_config(ctx: UpdateContext) -> Table:
         new_values = parse_env_values(rendered[target.name])
         added = [key for key in template.keys if key not in existing]
         removed = [key for key in existing if key not in template.keys]
-        unresolved.extend(f"{target.name}:{key}" for key in added if new_values.get(key, "") == "")
+        unresolved.extend(
+            f"{target.name}:{key}"
+            for key in added
+            if new_values.get(key, "") == "" and _needs_value(ctx, target.name, key)
+        )
         if added or removed:
             table.add_row(target.name, ", ".join(added), ", ".join(removed))
     if unresolved:
@@ -221,6 +235,14 @@ def migrate_config(ctx: UpdateContext) -> Table:
     if not ctx.options.dry_run:
         write_all(ctx.workspace, rendered)
     return table
+
+
+def _needs_value(ctx: UpdateContext, target: str, key: str) -> bool:
+    """An empty new key blocks only when nothing can supply it: unbound, or a required answer."""
+    for binding in ctx.bindings:
+        if binding.target == target and binding.key == key:
+            return binding.field in REQUIRED_FIELDS
+    return True
 
 
 def apply(ctx: UpdateContext) -> None:
@@ -246,9 +268,12 @@ def run_update(ctx: UpdateContext) -> bool:
     commits = ctx.git.commits_between("HEAD", ctx.target)
     for commit in commits:
         ctx.console.print(f"  {commit.sha} {commit.subject}")
-    if not commits and not any(row.moves for row in rows):
+    if not commits and not any(row.needs_work for row in rows):
         ctx.console.print(UP_TO_DATE)
         return False
+    stale = [row.service for row in rows if row.stale and not row.moves]
+    if stale:
+        ctx.console.print(f"Running behind the pin, will rebuild: {', '.join(stale)}")
     if ctx.options.dry_run:
         ctx.console.print("Dry run: would snapshot, fetch, migrate, build, recreate and verify.")
         return True
