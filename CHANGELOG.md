@@ -13,7 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with Install buttons, one credentials page with a help popover per field and
   live checks on change, an Advanced section for every template tunable, a
   streamed run page and a doctor result page. Same phases as `setup`, driven
-  through the `Prompter` protocol; token-guarded; exits when closed or idle
+  through the `Prompter` protocol; token-guarded; exits when closed or idle.
+  The result page ends with Next steps: every host autostart step with its
+  state, an Apply button for the automatable ones (one UAC prompt), and
+  instructions with a link for automatic logon and Docker Desktop's switch
   (MickMarch/medialab#135).
 
 ## [0.1.3] - 2026-10-07

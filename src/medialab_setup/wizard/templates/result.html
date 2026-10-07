@@ -5,12 +5,18 @@
   {% if succeeded %}
     <h2 class="ok">The stack is up</h2>
     <p>The doctor is green. Open the web UI at <a href="{{ web_ui_url }}" target="_blank" rel="noopener">{{ web_ui_url }}</a>, or talk to the bot in Discord.</p>
-    <p class="muted">Host autostart steps (Jellyfin at boot, lock at logon, firewall rule) are applied from the terminal: <code>bin/medialab-setup.sh setup --stop-after host</code>. Design and verification: <code>{{ host_setup_doc }}</code>.</p>
   {% else %}
     <h2 class="fail">Install stopped</h2>
     <p class="fail">{{ run.error }}</p>
     <p class="muted">Fix the cause and run setup again; every value already written is kept, so only what is missing is asked.</p>
   {% endif %}
+</div>
+<div class="panel">
+  <h2>Next steps: start with Windows</h2>
+  <p class="muted">So the whole stack is up after a reboot with nobody at the keyboard: Jellyfin runs as a system task at boot, the desktop locks right after automatic logon, Docker Desktop starts on sign-in, the doctor records a log after logon, and the web UI is reachable from your LAN. Design and verification: <code>{{ host_setup_doc }}</code>.</p>
+  {% include "partials/host_rows.html" %}
+</div>
+<div class="panel">
   <details><summary class="toggle">Full log</summary>
     <pre class="log">{% for line in run.log.lines %}{{ line }}
 {% endfor %}</pre>

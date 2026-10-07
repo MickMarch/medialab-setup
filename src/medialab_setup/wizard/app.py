@@ -17,6 +17,7 @@ from medialab_setup.checks import CredentialChecker
 from medialab_setup.envfile import EnvTemplate
 from medialab_setup.generate import collect_existing
 from medialab_setup.guides import GUIDES, Guide, guide_for
+from medialab_setup.host import HostPhase, HostRow
 from medialab_setup.jellyfin_client import JellyfinClient
 from medialab_setup.preflight import PREREQUISITES, Preflight, Row
 from medialab_setup.shell import Shell
@@ -308,7 +309,25 @@ def create_app(state: WizardState) -> FastAPI:
             succeeded=state.run.state is RunState.SUCCEEDED,
             web_ui_url=WEB_UI_URL,
             host_setup_doc=HOST_SETUP_DOC,
+            host_rows=_host_status(state),
         )
+
+    @app.post(
+        "/host/apply",
+        response_class=HTMLResponse,
+        response_model=None,
+        dependencies=[Depends(require_token)],
+    )
+    def host_apply(request: Request) -> HTMLResponse:
+        """Apply every automatable host step (one UAC prompt); manual ones stay listed."""
+        HostPhase(
+            state.workspace,
+            state.shell,
+            WebPrompter({}, _scratch_log()),
+            assume_yes=True,
+            interactive=True,
+        ).run()
+        return render(request, "partials/host_rows.html", host_rows=_host_status(state))
 
     @app.post(
         "/done",
@@ -321,6 +340,12 @@ def create_app(state: WizardState) -> FastAPI:
         return render(request, "done.html")
 
     return app
+
+
+def _host_status(state: WizardState) -> list[HostRow]:
+    return HostPhase(
+        state.workspace, state.shell, WebPrompter({}, _scratch_log()), interactive=False
+    ).status()
 
 
 def _rejected(checker: CredentialChecker, name: str, value: str) -> bool:

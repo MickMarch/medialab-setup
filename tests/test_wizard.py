@@ -272,3 +272,75 @@ def test_line_log_buffers_partial_writes() -> None:
 @pytest.mark.parametrize("name", REQUIRED_FIELDS)
 def test_every_required_field_has_a_guide(name: str) -> None:
     assert guide_for(name).title
+
+
+HOST_OK_FRAGMENTS = ("JellyfinTray", "AutoAdminLogon", "AutoStart", "medialab-doctor-after-logon")
+
+
+def _host_ready(shell: object, ok: tuple[str, ...]) -> None:
+    assert isinstance(shell, FakeShell)
+    for fragment in (
+        "medialab-jellyfin-server",
+        "JellyfinTray",
+        "medialab-lock-at-logon",
+        "AutoAdminLogon",
+        "AutoStart",
+        "medialab-doctor-after-logon",
+        "medialab-web LAN",
+    ):
+        shell.expect(fragment, stdout="ok\n" if fragment in ok else "")
+
+
+def _finish_run(client: TestClient, state: WizardState, media: Path) -> None:
+    client.post("/credentials", data=_full_form(media))
+    assert state.run is not None and state.run.thread is not None
+    state.run.thread.join(timeout=10)
+
+
+def test_result_lists_host_steps_with_state_and_apply(workspace_root: Path, tmp_path: Path) -> None:
+    client, state = _client(workspace_root)
+    _host_ready(state.shell, HOST_OK_FRAGMENTS)
+    _enter(client, state)
+    _finish_run(client, state, tmp_path / "media")
+    html = client.get("/result").text
+    assert "Next steps" in html
+    assert "Jellyfin at boot (SYSTEM task)" in html and "pending" in html
+    assert "Apply 3 steps" in html
+    assert "Automatic logon" in html and "in place" in html
+
+
+def test_host_apply_runs_elevated_batch_and_rechecks(workspace_root: Path, tmp_path: Path) -> None:
+    client, state = _client(workspace_root)
+    shell = state.shell
+    assert isinstance(shell, FakeShell)
+    _host_ready(shell, HOST_OK_FRAGMENTS)
+    original = shell.run_elevated
+
+    def elevate(script_path: Path) -> int:
+        code = original(script_path)
+        _host_ready(
+            shell,
+            HOST_OK_FRAGMENTS
+            + ("medialab-jellyfin-server", "medialab-lock-at-logon", "medialab-web LAN"),
+        )
+        return code
+
+    shell.run_elevated = elevate  # type: ignore[method-assign]
+    _enter(client, state)
+    _finish_run(client, state, tmp_path / "media")
+    html = client.post("/host/apply").text
+    assert len(shell.elevated_scripts) == 1
+    assert "Every host step is in place" in html
+    assert "pending" not in html
+
+
+def test_manual_host_steps_show_instructions_and_link(workspace_root: Path, tmp_path: Path) -> None:
+    client, state = _client(workspace_root)
+    _host_ready(state.shell, ("JellyfinTray", "medialab-doctor-after-logon"))
+    _enter(client, state)
+    _finish_run(client, state, tmp_path / "media")
+    html = client.get("/result").text
+    assert "Sysinternals Autologon" in html
+    assert "sysinternals/downloads/autologon" in html
+    assert "Start Docker Desktop when you sign in" in html
+    assert "need you" in html
