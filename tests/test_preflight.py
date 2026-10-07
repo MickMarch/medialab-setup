@@ -141,3 +141,22 @@ def test_host_qbittorrent_running_warns(workspace_root: Path) -> None:
     shell.expect("tasklist", stdout="qbittorrent.exe   1234 Console\n")
     result = Preflight(Workspace(workspace_root), shell, ScriptedPrompter()).run()
     assert _rows(result)["host qBittorrent"][0] is Status.WARN
+
+
+def test_compose_project_owned_elsewhere_fails(workspace_root: Path, tmp_path: Path) -> None:
+    import json
+
+    shell = _ready_shell()
+    shell.compose_ls_json = json.dumps(
+        [
+            {
+                "Name": workspace_root.name,
+                "ConfigFiles": str(tmp_path / "live" / "docker-compose.yml"),
+            }
+        ]
+    )
+    result = Preflight(Workspace(workspace_root), shell, ScriptedPrompter()).run()
+    status, detail = _rows(result)["compose project"]
+    assert status is Status.FAIL
+    assert "live" in detail
+    assert result.failed

@@ -186,3 +186,19 @@ def test_to_ref_is_used_as_target(workspace_root: Path) -> None:
     ctx = _ctx(workspace_root, shell, to="v9")
     run_update(ctx)
     assert "merge --ff-only v9" in _git_calls(ctx)
+
+
+def test_update_refuses_when_project_owned_elsewhere(workspace_root: Path, tmp_path: Path) -> None:
+    shell = _shell()
+    shell.compose_ls_json = json.dumps(
+        [
+            {
+                "Name": workspace_root.name,
+                "ConfigFiles": str(tmp_path / "live" / "docker-compose.yml"),
+            }
+        ]
+    )
+    ctx = _ctx(workspace_root, shell)
+    with pytest.raises(UpdateError, match="already running from"):
+        run_update(ctx)
+    assert _git_calls(ctx) == []

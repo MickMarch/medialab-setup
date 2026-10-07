@@ -11,6 +11,7 @@ from rich.table import Table
 
 from medialab_setup.bindings import BINDINGS, Binding
 from medialab_setup.collect import CollectError
+from medialab_setup.compose_project import ProjectConflict, ensure_project_is_ours
 from medialab_setup.envfile import EnvTemplate, parse_env_values
 from medialab_setup.generate import collect_existing, render_all, write_all
 from medialab_setup.gitops import DEFAULT_TARGET, MAIN, Git
@@ -236,6 +237,10 @@ def apply(ctx: UpdateContext) -> None:
 def run_update(ctx: UpdateContext) -> bool:
     """Returns True when something was updated, False when already up to date."""
     ctx.console.rule("check")
+    try:
+        ensure_project_is_ours(ctx.shell, ctx.workspace)
+    except ProjectConflict as conflict:
+        raise UpdateError(str(conflict)) from conflict
     rows = check(ctx)
     ctx.console.print(check_table(rows))
     commits = ctx.git.commits_between("HEAD", ctx.target)
