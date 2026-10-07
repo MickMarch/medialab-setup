@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The generated qBittorrent WebUI API key now has the shape qBittorrent accepts
+  (`qbt_` plus 28 alphanumerics, as `bin/medialab-qbt-provision.sh` makes it).
+  The generic 43-character secret was seeded but rejected with 403, so
+  provision never saw the WebUI answer.
+
 ## [0.1.2] - 2026-10-07
 
 ### Fixed

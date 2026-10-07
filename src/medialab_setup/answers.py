@@ -9,6 +9,7 @@ fields are `SecretStr` so no dump or repr can leak them.
 from __future__ import annotations
 
 import secrets
+import string
 from typing import Any
 
 from pydantic import BaseModel, SecretStr
@@ -21,8 +22,25 @@ CONTAINER_HOST_ALIAS = "host.docker.internal"
 EXTRA_FIELD = "extra"
 
 
+# qBittorrent accepts a WebUI API key of this exact shape; mirrors API_KEY_PREFIX and
+# API_KEY_RANDOM_LENGTH in bin/medialab-qbt-provision.sh, which seeds the same value.
+QBT_API_KEY_PREFIX = "qbt_"
+QBT_API_KEY_RANDOM_LENGTH = 28
+QBT_API_KEY_ALPHABET = string.ascii_letters + string.digits
+QBT_API_KEY_FIELD = "qb_api_key"
+
+
 def generate_secret() -> str:
     return secrets.token_urlsafe(SECRET_BYTES)
+
+
+def generate_qbt_api_key() -> str:
+    tail = "".join(secrets.choice(QBT_API_KEY_ALPHABET) for _ in range(QBT_API_KEY_RANDOM_LENGTH))
+    return f"{QBT_API_KEY_PREFIX}{tail}"
+
+
+def generate_for(field: str) -> str:
+    return generate_qbt_api_key() if field == QBT_API_KEY_FIELD else generate_secret()
 
 
 class Answers(BaseModel):
@@ -60,7 +78,7 @@ class Answers(BaseModel):
     def with_generated(self) -> Answers:
         """Fill every generated field that is still unset."""
         fills = {
-            field: SecretStr(generate_secret())
+            field: SecretStr(generate_for(field))
             for field in GENERATED_FIELDS
             if getattr(self, field) is None
         }

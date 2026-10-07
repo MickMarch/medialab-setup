@@ -1,6 +1,8 @@
+import re
+
 from pydantic import SecretStr
 
-from medialab_setup.answers import Answers, generate_secret
+from medialab_setup.answers import Answers, generate_qbt_api_key, generate_secret
 from medialab_setup.bindings import GENERATED_FIELDS
 
 
@@ -36,3 +38,20 @@ def test_redacted_dump_drops_secrets_and_keeps_plain_values() -> None:
     assert dumped["media_host_dir"] == "F:/Media"
     assert "tmdb-secret" not in str(dumped)
     assert "tmdb_api_key" not in dumped
+
+
+QBT_KEY_PATTERN = re.compile(r"^qbt_[A-Za-z0-9]{28}$")
+
+
+def test_qbt_api_key_matches_the_provision_script_shape() -> None:
+    key = generate_qbt_api_key()
+    assert QBT_KEY_PATTERN.match(key), key
+    assert len(key) == 32
+
+
+def test_generated_qb_api_key_uses_the_qbt_shape_and_others_do_not() -> None:
+    answers = Answers().with_generated()
+    assert answers.qb_api_key is not None
+    assert QBT_KEY_PATTERN.match(answers.qb_api_key.get_secret_value())
+    assert answers.orchestrator_api_key is not None
+    assert not QBT_KEY_PATTERN.match(answers.orchestrator_api_key.get_secret_value())
