@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `update` now treats a service running behind its pin as work to do, so
+  pins bumped without a rebuild are deployed instead of reported as up to
+  date. Migration no longer blocks on a new key that is bound to an optional
+  answer and defaults to empty (the Discord notify webhook).
+
 ## [0.3.0] - 2026-10-07
 
 ### Added

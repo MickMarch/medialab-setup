@@ -35,7 +35,9 @@ FIXTURE_BINDINGS = (
 )
 
 
-def _shell(*, moved: bool = True, clean: bool = True, branch: str = "main") -> FakeShell:
+def _shell(
+    *, moved: bool = True, clean: bool = True, branch: str = "main", running: str = "1.2.0"
+) -> FakeShell:
     shell = FakeShell()
     shell.expect("rev-parse --abbrev-ref HEAD", stdout=f"{branch}\n")
     shell.expect("rev-parse HEAD", stdout=f"{ROOT_SHA}\n")
@@ -51,8 +53,10 @@ def _shell(*, moved: bool = True, clean: bool = True, branch: str = "main") -> F
     shell.expect("describe --tags --always", stdout="v1.2.0\n")
     shell.expect(
         "docker compose",
-        stdout='{"Service": "svc-a", "Image": "medialab/svc-a:1.2.0", "State": "running"}\n'
-        '{"Service": "svc-b", "Image": "medialab/svc-b:1.2.0", "State": "running"}\n',
+        stdout=(
+            f'{{"Service": "svc-a", "Image": "medialab/svc-a:{running}", "State": "running"}}\n'
+            f'{{"Service": "svc-b", "Image": "medialab/svc-b:{running}", "State": "running"}}\n'
+        ),
     )
     return shell
 
@@ -202,3 +206,21 @@ def test_update_refuses_when_project_owned_elsewhere(workspace_root: Path, tmp_p
     with pytest.raises(UpdateError, match="already running from"):
         run_update(ctx)
     assert _git_calls(ctx) == []
+
+
+def test_running_behind_the_pin_is_work_even_with_no_new_commits(workspace_root: Path) -> None:
+    ctx = _ctx(workspace_root, _shell(moved=False, running="1.1.0"))
+    assert run_update(ctx) is True
+    assert "Running behind the pin" in ctx.console.export_text()
+    assert any("medialab-build.sh" in c for c in _streamed(ctx))
+
+
+def test_optional_bound_key_with_empty_default_does_not_block_migration(
+    workspace_root: Path,
+) -> None:
+    (workspace_root / "svc-a" / ".env.example").write_text("API_KEY=\nSHARED_KEY=\nWEBHOOK=\n")
+    bindings = (*FIXTURE_BINDINGS, Binding("svc-a", "WEBHOOK", "discord_notify_webhook_url"))
+    ctx = _ctx(workspace_root, _shell())
+    ctx.bindings = bindings
+    assert run_update(ctx) is True
+    assert parse_env_values((workspace_root / "svc-a" / ".env").read_text())["WEBHOOK"] == ""
