@@ -60,4 +60,4 @@ files; it never imports a service package.
 - `wizard/`: FastAPI + Jinja + htmx front end over the same phases. `app.py` routes and token guard, `runner.py` background run into a `LineLog`, `prompter.py` the `WebPrompter` answering from the form. Owns no rules: fields, help, checks and phases come from the CLI modules.
 - `credential_check.py`: gateway credential map, daily toast ledger, WinRT toast script with a button opening a generated fix .cmd.
 - `wizard/repair.py`: the `--fix` flow; writes one key, recreates the owning container, polls the gateway until ok.
-- `jellyfin_client.py`: list and create Jellyfin libraries on the host; `ensure_library_roots` registers Movies and Shows once, never `_incoming`.
+- `jellyfin_client.py`: list and create Jellyfin libraries on the host; `ensure_library_roots` registers Movies and Shows once, never `_incoming`; `ensure_discover_libraries` adds "Discover Movies" and "Discover Shows" over `DISCOVER_HOST_DIR`, skipping one present by name or path.

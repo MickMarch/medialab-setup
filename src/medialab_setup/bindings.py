@@ -53,6 +53,9 @@ BINDINGS: tuple[Binding, ...] = (
     Binding(GLUETUN_TARGET, "SERVER_COUNTRIES", "server_countries"),
 )
 
+# Root `.env` key read after generate, not asked: its template default is the answer.
+DISCOVER_HOST_DIR_KEY = "DISCOVER_HOST_DIR"
+
 # Caller (target, key) must equal callee (target, key): the table in docs/secrets.md.
 KEY_PAIRS: tuple[tuple[tuple[str, str], tuple[str, str]], ...] = (
     ((BOT, "ORCHESTRATOR_API_KEY"), (ORCHESTRATOR, "API_KEY")),

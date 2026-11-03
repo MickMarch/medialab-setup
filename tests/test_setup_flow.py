@@ -23,6 +23,7 @@ from medialab_setup.setup_flow import (
     SetupContext,
     SetupOptions,
     VerifyError,
+    discover_folders,
     media_folders,
     run_setup,
 )
@@ -97,6 +98,41 @@ def _ctx(root: Path, media: Path, **options: object) -> SetupContext:
         console=Console(record=True, width=400),
         make_jellyfin_client=FakeJellyfin,
     )
+
+
+def test_discover_folders_follow_the_contracts_layout() -> None:
+    folders = {p.as_posix() for p in discover_folders("F:/MedialabDiscover")}
+    assert folders == {
+        "F:/MedialabDiscover/Movies",
+        "F:/MedialabDiscover/Shows",
+        "F:/MedialabDiscover/_clip",
+    }
+
+
+def _with_discover_dir(root: Path, discover: Path) -> None:
+    example = root / ".env.example"
+    example.write_text(
+        example.read_text(encoding="utf-8") + f"DISCOVER_HOST_DIR={discover.as_posix()}\n",
+        encoding="utf-8",
+    )
+
+
+def test_full_run_creates_the_discover_folders_and_libraries(
+    workspace_root: Path, tmp_path: Path
+) -> None:
+    FakeJellyfin.instances.clear()
+    discover = tmp_path / "discover"
+    _with_discover_dir(workspace_root, discover)
+    ctx = _ctx(workspace_root, tmp_path / "media")
+    run_setup(ctx)
+    assert (discover / "Movies").is_dir()
+    assert (discover / "_clip").is_dir()
+    assert FakeJellyfin.instances[0].created == [
+        "Movies",
+        "Shows",
+        "Discover Movies",
+        "Discover Shows",
+    ]
 
 
 def test_media_folders_follow_the_contracts_layout() -> None:

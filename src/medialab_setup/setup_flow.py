@@ -7,16 +7,21 @@ from enum import Enum
 from pathlib import Path
 
 import httpx
-from medialab_contracts import MEDIA_TYPE_SUBDIRS, STAGING_SUBDIR
+from medialab_contracts import DISCOVER_CLIP_SUBDIR, MEDIA_TYPE_SUBDIRS, STAGING_SUBDIR
 from rich.console import Console
 from rich.table import Table
 
 from medialab_setup.answers_file import answers_path, write_answers
+from medialab_setup.bindings import DISCOVER_HOST_DIR_KEY
 from medialab_setup.checks import CredentialChecker
 from medialab_setup.collect import Collected, Mode, collect
 from medialab_setup.generate import render_all, write_all
 from medialab_setup.host import HostPhase, HostRow
-from medialab_setup.jellyfin_client import JellyfinClient, ensure_library_roots
+from medialab_setup.jellyfin_client import (
+    JellyfinClient,
+    ensure_discover_libraries,
+    ensure_library_roots,
+)
 from medialab_setup.preflight import Preflight, PreflightError, PreflightResult, Status
 from medialab_setup.prompts import Prompter, UrlOpener, open_in_browser
 from medialab_setup.report import answers_table, files_table
@@ -86,6 +91,15 @@ def media_folders(media_host_dir: str) -> list[Path]:
     return [*library, *staging]
 
 
+def discover_folders(discover_host_dir: str) -> list[Path]:
+    root = Path(discover_host_dir)
+    return [*(root / name for name in MEDIA_TYPE_SUBDIRS.values()), root / DISCOVER_CLIP_SUBDIR]
+
+
+def _discover_host_dir(ctx: SetupContext) -> str | None:
+    return ctx.workspace.root_env_values().get(DISCOVER_HOST_DIR_KEY) or None
+
+
 def preflight_table(result: PreflightResult) -> Table:
     table = Table(title="Preflight")
     table.add_column("")
@@ -143,7 +157,8 @@ def run_generate(ctx: SetupContext) -> None:
         ctx.console.print("Dry run: nothing was written.")
         return
     changed = write_all(ctx.workspace, rendered)
-    for folder in folders:
+    discover_dir = _discover_host_dir(ctx)
+    for folder in [*folders, *(discover_folders(discover_dir) if discover_dir else [])]:
         folder.mkdir(parents=True, exist_ok=True)
     write_answers(answers_path(ctx.workspace.root), answers, backup_dir=ctx.workspace.backup_dir)
     ctx.console.print(
@@ -170,7 +185,10 @@ def run_provision(ctx: SetupContext) -> None:
     _announce(ctx, up)
     answers = ctx.collected.answers if ctx.collected else None
     if ctx.options.dry_run:
-        ctx.console.print("Would register the Movies and Shows library roots in Jellyfin.")
+        ctx.console.print(
+            "Would register the Movies and Shows library roots and the Discover libraries "
+            "in Jellyfin."
+        )
         return
     run_or_raise(ctx.shell, provision, PROVISION_SCRIPT)
     run_or_raise(ctx.shell, up, "docker compose up")
@@ -182,6 +200,14 @@ def run_provision(ctx: SetupContext) -> None:
         created = ensure_library_roots(client, answers.media_host_dir)
     except httpx.HTTPError as error:
         raise ScriptError(f"Jellyfin library registration failed: {error}") from error
+    discover_dir = _discover_host_dir(ctx)
+    if discover_dir is None:
+        ctx.console.print("[yellow]warning:[/yellow] Discover libraries not created: no folder")
+    else:
+        try:
+            created += ensure_discover_libraries(client, discover_dir)
+        except httpx.HTTPError as error:
+            raise ScriptError(f"Discover library registration failed: {error}") from error
     if created:
         ctx.console.print(f"Jellyfin libraries created: {', '.join(created)}")
     else:
