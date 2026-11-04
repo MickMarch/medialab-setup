@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Setup creates the `DISCOVER_HOST_DIR` folders (Movies, Shows, `_clip`) and the
+  "Discover Movies" and "Discover Shows" Jellyfin libraries, skipping any
+  already present by name or path (MickMarch/medialab#156).
+
+### Changed
+
+- medialab-contracts pin v1.3.0 -> v1.6.1.
+
 ## [0.3.2] - 2026-11-03
 
 ### Security

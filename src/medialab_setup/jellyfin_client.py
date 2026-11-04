@@ -1,4 +1,5 @@
-"""Register the library roots in Jellyfin on the host, once. Faked at this class in tests."""
+"""Register the library roots and the Discover libraries in Jellyfin on the
+host, once. Faked at this class in tests."""
 
 from __future__ import annotations
 
@@ -6,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import PureWindowsPath
 
 import httpx
-from medialab_contracts import MEDIA_TYPE_SUBDIRS, MediaType
+from medialab_contracts import DISCOVER_LIBRARY_NAMES, MEDIA_TYPE_SUBDIRS, MediaType
 
 from medialab_setup.checks import DEFAULT_JELLYFIN_URL, JELLYFIN_TOKEN_HEADER
 
@@ -73,4 +74,19 @@ def ensure_library_roots(client: JellyfinClient, media_host_dir: str) -> list[st
             continue
         client.create_library(subdir, COLLECTION_TYPES[media_type], path)
         created.append(subdir)
+    return created
+
+
+def ensure_discover_libraries(client: JellyfinClient, discover_host_dir: str) -> list[str]:
+    """Create each Discover library missing by name and by path. Returns created names."""
+    existing = client.list_libraries()
+    names = {library.name for library in existing}
+    created: list[str] = []
+    for media_type, name in DISCOVER_LIBRARY_NAMES.items():
+        path = host_path(discover_host_dir, MEDIA_TYPE_SUBDIRS[media_type])
+        registered = any(_same_path(known, path) for library in existing for known in library.paths)
+        if name in names or registered:
+            continue
+        client.create_library(name, COLLECTION_TYPES[media_type], path)
+        created.append(name)
     return created
