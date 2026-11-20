@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `remove_discover_libraries` deletes the retired "Discover Movies" and
+  "Discover Shows" Jellyfin libraries whose every path is under the old
+  `DISCOVER_HOST_DIR` (default `F:/MedialabDiscover`); a same-name library
+  with any other path is kept and reported. `update` runs it after a green
+  doctor and on every non-dry-run up-to-date run, so a teardown that warned is
+  retried; `setup` runs it after library registration. A Jellyfin error, an
+  unexpected response body or a drive-only folder is a warning that names each
+  library left behind and points to the Jellyfin dashboard
+  (MickMarch/medialab#168).
+- `update` migration drops keys retired from a service template instead of
+  carrying them over: `DISCOVER_MOUNT_PATH` from medialab-jellyfin and
+  `DISCOVER_REFRESH_SECONDS`, `DISCOVER_POLL_SECONDS`,
+  `DISCOVER_RECOMMENDATIONS_PER_TITLE`, `JELLYFIN_REQUEST_USERS`,
+  `JELLYFIN_REQUEST_RETRY_HOURS`, `JELLYFIN_REQUEST_RESOLUTION` and
+  `JELLYFIN_WEBHOOK_SECRET` from medialab-orchestrator. The root
+  `DISCOVER_HOST_DIR` is kept for the teardown (MickMarch/medialab#168).
+
+### Removed
+
+- Setup no longer creates the Discover folders or the "Discover Movies" and
+  "Discover Shows" libraries; `ensure_discover_libraries`, `discover_folders`
+  and the `DISCOVER_HOST_DIR` binding are gone (MickMarch/medialab#168).
+
 ## [0.4.0] - 2026-11-03
 
 ### Added

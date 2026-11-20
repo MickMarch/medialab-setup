@@ -1,17 +1,21 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 from fakes import FakeShell, ScriptedPrompter
 from rich.console import Console
 
-from medialab_setup.bindings import Binding
+from medialab_setup.bindings import JELLYFIN_WORKER, ORCHESTRATOR, Binding
+from medialab_setup.checks import JELLYFIN_TOKEN_HEADER
 from medialab_setup.collect import CollectError
 from medialab_setup.envfile import NOT_IN_TEMPLATE_COMMENT, parse_env_values
+from medialab_setup.jellyfin_client import JellyfinClient, Library
 from medialab_setup.scripts import DOCTOR_SCRIPT, VERIFY_INTERVAL_SECONDS
 from medialab_setup.update_flow import (
+    REMOVED_KEYS,
     SNAPSHOT_FILE,
     UP_TO_DATE,
     RolledBack,
@@ -33,6 +37,33 @@ FIXTURE_BINDINGS = (
     Binding("svc-b", "API_KEY", "orchestrator_api_key"),
     Binding(GLUETUN_TARGET, "WIREGUARD_PRIVATE_KEY", "wireguard_private_key"),
 )
+
+
+JELLYFIN_KEY_BINDING = Binding("svc-a", "JELLYFIN_API_KEY", "jellyfin_api_key")
+
+
+class FakeJellyfin(JellyfinClient):
+    instances: list[FakeJellyfin] = []
+    existing: list[Library] = []
+
+    def __init__(self, api_key: str, base_url: str = "") -> None:
+        super().__init__(api_key, base_url or "http://127.0.0.1:8096")
+        self.deleted: list[str] = []
+        FakeJellyfin.instances.append(self)
+
+    def list_libraries(self) -> list[Library]:
+        return [library for library in FakeJellyfin.existing if library.name not in self.deleted]
+
+    def delete_library(self, name: str) -> None:
+        self.deleted.append(name)
+
+
+@pytest.fixture(autouse=True)
+def _reset_fake_jellyfin() -> Iterator[None]:
+    FakeJellyfin.instances.clear()
+    FakeJellyfin.existing = []
+    yield
+    FakeJellyfin.existing = []
 
 
 def _shell(
@@ -74,6 +105,7 @@ def _ctx(root: Path, shell: FakeShell, **options: object) -> UpdateContext:
         prompter=ScriptedPrompter(),
         console=Console(record=True, width=400),
         bindings=FIXTURE_BINDINGS,
+        make_jellyfin_client=FakeJellyfin,
     )
 
 
@@ -224,3 +256,107 @@ def test_optional_bound_key_with_empty_default_does_not_block_migration(
     ctx.bindings = bindings
     assert run_update(ctx) is True
     assert parse_env_values((workspace_root / "svc-a" / ".env").read_text())["WEBHOOK"] == ""
+
+
+def _with_jellyfin_key(ctx: UpdateContext, root: Path) -> None:
+    (root / "svc-a" / ".env").write_text("API_KEY=k\nSHARED_KEY=s\nJELLYFIN_API_KEY=j\n")
+    ctx.bindings = (*FIXTURE_BINDINGS, JELLYFIN_KEY_BINDING)
+
+
+def test_update_removes_discover_libraries_under_the_folder_from_root_env(
+    workspace_root: Path,
+) -> None:
+    FakeJellyfin.existing = [
+        Library("Discover Movies", "movies", (r"G:\Old\Movies",)),
+        Library("Discover Shows", "tvshows", (r"F:\MedialabDiscover\Shows",)),
+    ]
+    ctx = _ctx(workspace_root, _shell())
+    _with_jellyfin_key(ctx, workspace_root)
+    (workspace_root / ".env").write_text("MEDIA_HOST_DIR=F:/Media\nDISCOVER_HOST_DIR=G:/Old\n")
+    assert run_update(ctx) is True
+    assert FakeJellyfin.instances[0].headers[JELLYFIN_TOKEN_HEADER] == "j"
+    assert FakeJellyfin.instances[0].deleted == ["Discover Movies"]
+    assert "Discover Shows" in ctx.console.export_text()
+
+
+def test_update_falls_back_to_the_old_default_folder(workspace_root: Path) -> None:
+    FakeJellyfin.existing = [
+        Library("Discover Movies", "movies", (r"F:\MedialabDiscover\Movies",)),
+        Library("Discover Shows", "tvshows", (r"F:\MedialabDiscover\Shows",)),
+    ]
+    ctx = _ctx(workspace_root, _shell())
+    _with_jellyfin_key(ctx, workspace_root)
+    run_update(ctx)
+    assert FakeJellyfin.instances[0].deleted == ["Discover Movies", "Discover Shows"]
+
+
+def test_update_without_a_jellyfin_key_skips_the_teardown(workspace_root: Path) -> None:
+    ctx = _ctx(workspace_root, _shell())
+    assert run_update(ctx) is True
+    assert FakeJellyfin.instances == []
+
+
+def test_update_does_not_tear_down_after_a_rollback(workspace_root: Path) -> None:
+    shell = _shell()
+    shell.expect_stream(DOCTOR, 1)
+    ctx = _ctx(workspace_root, shell)
+    _with_jellyfin_key(ctx, workspace_root)
+    with pytest.raises(RolledBack):
+        run_update(ctx)
+    assert FakeJellyfin.instances == []
+
+
+def test_up_to_date_still_retries_the_teardown(workspace_root: Path) -> None:
+    FakeJellyfin.existing = [
+        Library("Discover Movies", "movies", (r"F:\MedialabDiscover\Movies",)),
+    ]
+    ctx = _ctx(workspace_root, _shell(moved=False))
+    _with_jellyfin_key(ctx, workspace_root)
+    assert run_update(ctx) is False
+    assert FakeJellyfin.instances[0].deleted == ["Discover Movies"]
+
+
+def test_dry_run_up_to_date_contacts_no_jellyfin(workspace_root: Path) -> None:
+    ctx = _ctx(workspace_root, _shell(moved=False), dry_run=True)
+    _with_jellyfin_key(ctx, workspace_root)
+    run_update(ctx)
+    assert FakeJellyfin.instances == []
+
+
+def test_migration_drops_retired_keys_from_their_service_only(workspace_root: Path) -> None:
+    ctx = _ctx(workspace_root, _shell())
+    ctx.removed_keys = {"svc-a": frozenset({"OLD_KEY"})}
+    (workspace_root / "svc-a" / ".env").write_text("API_KEY=k\nSHARED_KEY=s\nOLD_KEY=1\n")
+    (workspace_root / "svc-b" / ".env").write_text("API_KEY=k\nSHARED_KEY=s\nOLD_KEY=2\n")
+    (workspace_root / ".env").write_text("MEDIA_HOST_DIR=F:/Media\nDISCOVER_HOST_DIR=G:/Old\n")
+    run_update(ctx)
+    assert "OLD_KEY" not in parse_env_values((workspace_root / "svc-a" / ".env").read_text())
+    assert parse_env_values((workspace_root / "svc-b" / ".env").read_text())["OLD_KEY"] == "2"
+    root_values = parse_env_values((workspace_root / ".env").read_text())
+    assert root_values["DISCOVER_HOST_DIR"] == "G:/Old"
+
+
+def test_retired_discover_keys_are_scoped_to_their_services() -> None:
+    expected = {
+        JELLYFIN_WORKER: frozenset({"DISCOVER_MOUNT_PATH"}),
+        ORCHESTRATOR: frozenset(
+            {
+                "DISCOVER_REFRESH_SECONDS",
+                "DISCOVER_POLL_SECONDS",
+                "DISCOVER_RECOMMENDATIONS_PER_TITLE",
+                "JELLYFIN_REQUEST_USERS",
+                "JELLYFIN_REQUEST_RETRY_HOURS",
+                "JELLYFIN_REQUEST_RESOLUTION",
+                "JELLYFIN_WEBHOOK_SECRET",
+            }
+        ),
+    }
+    assert expected == REMOVED_KEYS
+    assert ROOT_TARGET not in REMOVED_KEYS
+
+
+def test_dry_run_update_contacts_no_jellyfin(workspace_root: Path) -> None:
+    ctx = _ctx(workspace_root, _shell(), dry_run=True)
+    _with_jellyfin_key(ctx, workspace_root)
+    run_update(ctx)
+    assert FakeJellyfin.instances == []

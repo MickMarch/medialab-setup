@@ -1,3 +1,4 @@
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -23,7 +24,6 @@ from medialab_setup.setup_flow import (
     SetupContext,
     SetupOptions,
     VerifyError,
-    discover_folders,
     media_folders,
     run_setup,
 )
@@ -49,17 +49,30 @@ class AlwaysOkChecker(CredentialChecker):
 
 class FakeJellyfin(JellyfinClient):
     instances: list["FakeJellyfin"] = []
+    existing: list[Library] = []
 
     def __init__(self, api_key: str, base_url: str = "") -> None:
         super().__init__(api_key, base_url or "http://127.0.0.1:8096")
         self.created: list[str] = []
+        self.deleted: list[str] = []
         FakeJellyfin.instances.append(self)
 
     def list_libraries(self) -> list[Library]:
-        return []
+        return list(FakeJellyfin.existing)
 
     def create_library(self, name: str, collection_type: str, path: str) -> None:
         self.created.append(name)
+
+    def delete_library(self, name: str) -> None:
+        self.deleted.append(name)
+
+
+@pytest.fixture(autouse=True)
+def _reset_fake_jellyfin() -> Iterator[None]:
+    FakeJellyfin.instances.clear()
+    FakeJellyfin.existing = []
+    yield
+    FakeJellyfin.existing = []
 
 
 def _real_workspace(root: Path) -> Workspace:
@@ -100,39 +113,18 @@ def _ctx(root: Path, media: Path, **options: object) -> SetupContext:
     )
 
 
-def test_discover_folders_follow_the_contracts_layout() -> None:
-    folders = {p.as_posix() for p in discover_folders("F:/MedialabDiscover")}
-    assert folders == {
-        "F:/MedialabDiscover/Movies",
-        "F:/MedialabDiscover/Shows",
-        "F:/MedialabDiscover/_clip",
-    }
-
-
-def _with_discover_dir(root: Path, discover: Path) -> None:
-    example = root / ".env.example"
-    example.write_text(
-        example.read_text(encoding="utf-8") + f"DISCOVER_HOST_DIR={discover.as_posix()}\n",
-        encoding="utf-8",
-    )
-
-
-def test_full_run_creates_the_discover_folders_and_libraries(
+def test_full_run_removes_discover_libraries_left_by_an_old_install(
     workspace_root: Path, tmp_path: Path
 ) -> None:
-    FakeJellyfin.instances.clear()
-    discover = tmp_path / "discover"
-    _with_discover_dir(workspace_root, discover)
+    FakeJellyfin.existing = [
+        Library("Discover Movies", "movies", (r"F:\MedialabDiscover\Movies",)),
+        Library("Discover Shows", "tvshows", (r"G:\Elsewhere\Shows",)),
+    ]
     ctx = _ctx(workspace_root, tmp_path / "media")
     run_setup(ctx)
-    assert (discover / "Movies").is_dir()
-    assert (discover / "_clip").is_dir()
-    assert FakeJellyfin.instances[0].created == [
-        "Movies",
-        "Shows",
-        "Discover Movies",
-        "Discover Shows",
-    ]
+    assert FakeJellyfin.instances[0].deleted == ["Discover Movies"]
+    text = ctx.console.export_text()
+    assert "Discover Shows" in text
 
 
 def test_media_folders_follow_the_contracts_layout() -> None:

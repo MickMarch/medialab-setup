@@ -9,7 +9,7 @@ exists. Design: `docs/specs/setup-and-update-cli.md` in the workspace repo.
 | Command | Purpose |
 |---|---|
 | `setup` | fresh clone to a verified running stack: preflight, collect, render every `.env`, build, provision, host autostart, doctor |
-| `update` | move a running stack to the current pins: check, snapshot, fetch, migrate `.env`, build, recreate, doctor, roll back on failure |
+| `update` | move a running stack to the current pins: check, snapshot, fetch, migrate `.env`, build, recreate, doctor, roll back on failure; once green, remove the retired Discover libraries |
 | `wizard` | the same install in a browser page on loopback; `setup.cmd` at the workspace root launches it |
 | `wizard --fix <name>` | replace one credential the stack reports invalid: one field, check, write, recreate its container, verify |
 | `check-credentials` | toast each invalid credential once a day; registered as a scheduled task by the host step |
@@ -35,6 +35,20 @@ The tool reads no `.env` of its own. It reads each service's `.env.example`
 as the schema and writes that service's `.env`; secrets live only in the
 `.env` that owns them. Non-secret answers are replayed from
 `.medialab-setup/answers.toml` at the workspace root (gitignored).
+
+## Retired Discover libraries
+
+`setup` (after library registration) and `update` (after a green doctor,
+and on every up-to-date run so a failed teardown is retried) delete the Jellyfin libraries "Discover Movies" and "Discover Shows" when
+every path they hold is under the old Discover folder: `DISCOVER_HOST_DIR`
+from the root `.env` if still present, otherwise `F:/MedialabDiscover`. A
+library with that name and any other path is kept and reported. A drive-only
+folder skips the teardown. A Jellyfin error is a warning naming each library
+left behind, to delete in the Jellyfin dashboard, never a failed run.
+
+`update` also drops service `.env` keys retired with the Discover libraries
+(`REMOVED_KEYS` in `update_flow.py`), since the services reject unknown keys. The folder itself is never deleted;
+remove it by hand (see `docs/host-setup.md` in the workspace).
 
 ## Development
 
