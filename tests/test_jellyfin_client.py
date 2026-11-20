@@ -208,3 +208,7 @@ def test_a_drive_or_root_only_discover_folder_skips_the_teardown(root: str) -> N
     report_discover_teardown(client, root, lines.append)
     assert client.deleted == []
     assert len(lines) == 1 and "warning" in lines[0]
+
+
+def test_client_authenticates_with_the_mediabrowser_authorization_header() -> None:
+    assert JellyfinClient("abc").headers == {"Authorization": 'MediaBrowser Token="abc"'}

@@ -9,7 +9,7 @@ from fakes import FakeShell, ScriptedPrompter
 from rich.console import Console
 
 from medialab_setup.bindings import JELLYFIN_WORKER, ORCHESTRATOR, Binding
-from medialab_setup.checks import JELLYFIN_TOKEN_HEADER
+from medialab_setup.checks import jellyfin_auth_headers
 from medialab_setup.collect import CollectError
 from medialab_setup.envfile import NOT_IN_TEMPLATE_COMMENT, parse_env_values
 from medialab_setup.jellyfin_client import JellyfinClient, Library
@@ -274,7 +274,7 @@ def test_update_removes_discover_libraries_under_the_folder_from_root_env(
     _with_jellyfin_key(ctx, workspace_root)
     (workspace_root / ".env").write_text("MEDIA_HOST_DIR=F:/Media\nDISCOVER_HOST_DIR=G:/Old\n")
     assert run_update(ctx) is True
-    assert FakeJellyfin.instances[0].headers[JELLYFIN_TOKEN_HEADER] == "j"
+    assert FakeJellyfin.instances[0].headers == jellyfin_auth_headers("j")
     assert FakeJellyfin.instances[0].deleted == ["Discover Movies"]
     assert "Discover Shows" in ctx.console.export_text()
 

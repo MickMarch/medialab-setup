@@ -11,7 +11,7 @@ from pathlib import PureWindowsPath
 import httpx
 from medialab_contracts import MEDIA_TYPE_SUBDIRS, MediaType
 
-from medialab_setup.checks import DEFAULT_JELLYFIN_URL, JELLYFIN_TOKEN_HEADER
+from medialab_setup.checks import DEFAULT_JELLYFIN_URL, jellyfin_auth_headers
 
 VIRTUAL_FOLDERS_PATH = "/Library/VirtualFolders"
 REQUEST_TIMEOUT_SECONDS = 30.0
@@ -44,7 +44,7 @@ class Library:
 class JellyfinClient:
     def __init__(self, api_key: str, base_url: str = DEFAULT_JELLYFIN_URL) -> None:
         self.base_url = base_url.rstrip("/")
-        self.headers = {JELLYFIN_TOKEN_HEADER: api_key}
+        self.headers = jellyfin_auth_headers(api_key)
 
     def list_libraries(self) -> list[Library]:
         response = httpx.get(
