@@ -1,19 +1,26 @@
-"""Register the library roots and the Discover libraries in Jellyfin on the
-host, once. Faked at this class in tests."""
+"""Register the library roots in Jellyfin on the host, once, and remove the
+retired Discover libraries. Faked at this class in tests."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
 from pathlib import PureWindowsPath
 
 import httpx
-from medialab_contracts import DISCOVER_LIBRARY_NAMES, MEDIA_TYPE_SUBDIRS, MediaType
+from medialab_contracts import MEDIA_TYPE_SUBDIRS, MediaType
 
 from medialab_setup.checks import DEFAULT_JELLYFIN_URL, JELLYFIN_TOKEN_HEADER
 
 VIRTUAL_FOLDERS_PATH = "/Library/VirtualFolders"
 REQUEST_TIMEOUT_SECONDS = 30.0
 COLLECTION_TYPES: dict[MediaType, str] = {MediaType.MOVIE: "movies", MediaType.SHOW: "tvshows"}
+REFRESH_LIBRARY_OFF = "false"
+
+# Retired Discover libraries (MickMarch/medialab#168): kept only to tear them down.
+LEGACY_DISCOVER_LIBRARY_NAMES: tuple[str, ...] = ("Discover Movies", "Discover Shows")
+LEGACY_DISCOVER_HOST_DIR_KEY = "DISCOVER_HOST_DIR"
+LEGACY_DISCOVER_HOST_DIR_DEFAULT = "F:/MedialabDiscover"
 
 
 @dataclass(frozen=True)
@@ -48,11 +55,30 @@ class JellyfinClient:
         response = httpx.post(
             f"{self.base_url}{VIRTUAL_FOLDERS_PATH}",
             headers=self.headers,
-            params={"name": name, "collectionType": collection_type, "refreshLibrary": "false"},
+            params={
+                "name": name,
+                "collectionType": collection_type,
+                "refreshLibrary": REFRESH_LIBRARY_OFF,
+            },
             json={"LibraryOptions": {"PathInfos": [{"Path": path}]}},
             timeout=REQUEST_TIMEOUT_SECONDS,
         )
         response.raise_for_status()
+
+    def delete_library(self, name: str) -> None:
+        response = httpx.delete(
+            f"{self.base_url}{VIRTUAL_FOLDERS_PATH}",
+            headers=self.headers,
+            params={"name": name, "refreshLibrary": REFRESH_LIBRARY_OFF},
+            timeout=REQUEST_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+
+
+@dataclass
+class DiscoverTeardown:
+    removed: list[str] = field(default_factory=list)
+    skipped: list[str] = field(default_factory=list)
 
 
 def host_path(media_host_dir: str, subdir: str) -> str:
@@ -77,16 +103,46 @@ def ensure_library_roots(client: JellyfinClient, media_host_dir: str) -> list[st
     return created
 
 
-def ensure_discover_libraries(client: JellyfinClient, discover_host_dir: str) -> list[str]:
-    """Create each Discover library missing by name and by path. Returns created names."""
-    existing = client.list_libraries()
-    names = {library.name for library in existing}
-    created: list[str] = []
-    for media_type, name in DISCOVER_LIBRARY_NAMES.items():
-        path = host_path(discover_host_dir, MEDIA_TYPE_SUBDIRS[media_type])
-        registered = any(_same_path(known, path) for library in existing for known in library.paths)
-        if name in names or registered:
+def _is_under(path: str, root: str) -> bool:
+    folded = PureWindowsPath(path.lower())
+    return folded.is_relative_to(PureWindowsPath(root.lower()))
+
+
+def remove_discover_libraries(client: JellyfinClient, discover_host_dir: str) -> DiscoverTeardown:
+    """Delete each retired Discover library whose every path is under the old Discover folder.
+
+    A library with a Discover name and any other path is left alone and reported as skipped.
+    """
+    result = DiscoverTeardown()
+    for library in client.list_libraries():
+        if library.name not in LEGACY_DISCOVER_LIBRARY_NAMES:
             continue
-        client.create_library(name, COLLECTION_TYPES[media_type], path)
-        created.append(name)
-    return created
+        if library.paths and all(_is_under(path, discover_host_dir) for path in library.paths):
+            client.delete_library(library.name)
+            result.removed.append(library.name)
+        else:
+            result.skipped.append(library.name)
+    return result
+
+
+def legacy_discover_host_dir(root_env: Mapping[str, str]) -> str:
+    """The old Discover folder from the root `.env`, or its old default."""
+    return root_env.get(LEGACY_DISCOVER_HOST_DIR_KEY) or LEGACY_DISCOVER_HOST_DIR_DEFAULT
+
+
+def report_discover_teardown(
+    client: JellyfinClient, discover_host_dir: str, emit: Callable[[str], None]
+) -> None:
+    """Run the teardown; a Jellyfin error is a warning, never a failed run."""
+    try:
+        result = remove_discover_libraries(client, discover_host_dir)
+    except httpx.HTTPError as error:
+        emit(f"[yellow]warning:[/yellow] Discover libraries not removed: {error}")
+        return
+    if result.removed:
+        emit(f"Removed retired Jellyfin libraries: {', '.join(result.removed)}")
+    for name in result.skipped:
+        emit(
+            f"[yellow]warning:[/yellow] kept library {name!r}: it has paths outside "
+            f"{discover_host_dir}"
+        )

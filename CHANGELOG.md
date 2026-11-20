@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `remove_discover_libraries` deletes the retired "Discover Movies" and
+  "Discover Shows" Jellyfin libraries whose every path is under the old
+  `DISCOVER_HOST_DIR` (default `F:/MedialabDiscover`); a same-name library
+  with any other path is kept and reported. `update` runs it after a green
+  doctor and `setup` after library registration (MickMarch/medialab#168).
+
+### Removed
+
+- Setup no longer creates the Discover folders or the "Discover Movies" and
+  "Discover Shows" libraries; `ensure_discover_libraries`, `discover_folders`
+  and the `DISCOVER_HOST_DIR` binding are gone (MickMarch/medialab#168).
+
 ## [0.4.0] - 2026-11-03
 
 ### Added

@@ -15,6 +15,11 @@ from medialab_setup.compose_project import ProjectConflict, ensure_project_is_ou
 from medialab_setup.envfile import EnvTemplate, parse_env_values
 from medialab_setup.generate import collect_existing, render_all, write_all
 from medialab_setup.gitops import DEFAULT_TARGET, MAIN, Git
+from medialab_setup.jellyfin_client import (
+    JellyfinClient,
+    legacy_discover_host_dir,
+    report_discover_teardown,
+)
 from medialab_setup.prompts import Prompter
 from medialab_setup.scripts import (
     BUILD_SCRIPT,
@@ -80,6 +85,7 @@ class UpdateContext:
     prompter: Prompter
     console: Console
     bindings: tuple[Binding, ...] = BINDINGS
+    make_jellyfin_client: type[JellyfinClient] = JellyfinClient
     git: Git = field(init=False)
     snapshot_commit: str | None = None
 
@@ -256,6 +262,18 @@ def apply(ctx: UpdateContext) -> None:
     run_or_raise(ctx.shell, up, "docker compose up")
 
 
+def teardown_discover(ctx: UpdateContext, discover_host_dir: str) -> None:
+    """Remove the retired Discover libraries from Jellyfin on the host."""
+    api_key = collect_existing(ctx.workspace, ctx.bindings).jellyfin_api_key
+    if api_key is None:
+        ctx.console.print(
+            "[yellow]warning:[/yellow] Discover libraries not checked: no Jellyfin key"
+        )
+        return
+    client = ctx.make_jellyfin_client(api_key.get_secret_value())
+    report_discover_teardown(client, discover_host_dir, ctx.console.print)
+
+
 def run_update(ctx: UpdateContext) -> bool:
     """Returns True when something was updated, False when already up to date."""
     ctx.console.rule("check")
@@ -275,11 +293,15 @@ def run_update(ctx: UpdateContext) -> bool:
     if stale:
         ctx.console.print(f"Running behind the pin, will rebuild: {', '.join(stale)}")
     if ctx.options.dry_run:
-        ctx.console.print("Dry run: would snapshot, fetch, migrate, build, recreate and verify.")
+        ctx.console.print(
+            "Dry run: would snapshot, fetch, migrate, build, recreate, verify and remove "
+            "the retired Discover libraries."
+        )
         return True
     ctx.console.rule("snapshot")
     snapshot(ctx)
     ctx.console.print(f"Snapshot at {ctx.workspace.backup_dir}")
+    discover_host_dir = legacy_discover_host_dir(ctx.workspace.root_env_values())
     ctx.console.rule("fetch")
     fetch(ctx)
     ctx.console.rule("migrate")
@@ -288,6 +310,8 @@ def run_update(ctx: UpdateContext) -> bool:
     apply(ctx)
     ctx.console.rule("verify")
     if wait_for_doctor(ctx.shell, ctx.workspace, ctx.console.print):
+        ctx.console.rule("teardown")
+        teardown_discover(ctx, discover_host_dir)
         return True
     if not ctx.options.rollback:
         raise UpdateError("doctor failed after update; --no-rollback left the new state in place")
