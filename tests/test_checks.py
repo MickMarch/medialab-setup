@@ -38,3 +38,17 @@ def test_secret_never_in_detail(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(httpx, "get", lambda *a, **k: _respond(HTTPStatus.FORBIDDEN))
     result = CredentialChecker().run(Check.DISCORD, "top-secret")
     assert "top-secret" not in result.detail
+
+
+def test_jellyfin_check_sends_the_mediabrowser_authorization_header(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sent: dict[str, object] = {}
+
+    def capture(*_a: object, **kwargs: object) -> httpx.Response:
+        sent.update(kwargs)
+        return _respond(HTTPStatus.OK)
+
+    monkeypatch.setattr(httpx, "get", capture)
+    CredentialChecker().run(Check.JELLYFIN, "abc")
+    assert sent["headers"] == {"Authorization": 'MediaBrowser Token="abc"'}

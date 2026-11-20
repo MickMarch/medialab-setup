@@ -13,10 +13,16 @@ REQUEST_TIMEOUT_SECONDS = 8.0
 TMDB_CONFIGURATION_URL = "https://api.themoviedb.org/3/configuration"
 TMDB_KEY_PARAM = "api_key"
 JELLYFIN_SYSTEM_INFO_PATH = "/System/Info"
-JELLYFIN_TOKEN_HEADER = "X-Emby-Token"
+JELLYFIN_AUTH_HEADER = "Authorization"
+JELLYFIN_AUTH_SCHEME = "MediaBrowser"
 DISCORD_ME_URL = "https://discord.com/api/v10/users/@me"
 DISCORD_AUTH_SCHEME = "Bot"
 DEFAULT_JELLYFIN_URL = "http://127.0.0.1:8096"
+
+
+def jellyfin_auth_headers(api_key: str) -> dict[str, str]:
+    """Jellyfin 12 accepts only the Authorization form; X-Emby-Token is rejected."""
+    return {JELLYFIN_AUTH_HEADER: f'{JELLYFIN_AUTH_SCHEME} Token="{api_key}"'}
 
 
 @dataclass(frozen=True)
@@ -51,7 +57,7 @@ class CredentialChecker:
                 return self._status_check(
                     httpx.get(
                         f"{self.jellyfin_url}{JELLYFIN_SYSTEM_INFO_PATH}",
-                        headers={JELLYFIN_TOKEN_HEADER: value},
+                        headers=jellyfin_auth_headers(value),
                         timeout=REQUEST_TIMEOUT_SECONDS,
                     ),
                     "Jellyfin accepted the key",

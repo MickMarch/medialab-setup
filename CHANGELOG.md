@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Jellyfin calls authenticate with the `Authorization: MediaBrowser Token` header.
+  Jellyfin 12 rejects `X-Emby-Token`, which failed the credential check and
+  the Discover library teardown with 401 (MickMarch/medialab#171).
+
 ## [0.5.0] - 2026-11-20
 
 ### Added
