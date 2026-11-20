@@ -8,13 +8,14 @@ import pytest
 from fakes import FakeShell, ScriptedPrompter
 from rich.console import Console
 
-from medialab_setup.bindings import Binding
+from medialab_setup.bindings import JELLYFIN_WORKER, ORCHESTRATOR, Binding
 from medialab_setup.checks import JELLYFIN_TOKEN_HEADER
 from medialab_setup.collect import CollectError
 from medialab_setup.envfile import NOT_IN_TEMPLATE_COMMENT, parse_env_values
 from medialab_setup.jellyfin_client import JellyfinClient, Library
 from medialab_setup.scripts import DOCTOR_SCRIPT, VERIFY_INTERVAL_SECONDS
 from medialab_setup.update_flow import (
+    REMOVED_KEYS,
     SNAPSHOT_FILE,
     UP_TO_DATE,
     RolledBack,
@@ -303,6 +304,55 @@ def test_update_does_not_tear_down_after_a_rollback(workspace_root: Path) -> Non
     with pytest.raises(RolledBack):
         run_update(ctx)
     assert FakeJellyfin.instances == []
+
+
+def test_up_to_date_still_retries_the_teardown(workspace_root: Path) -> None:
+    FakeJellyfin.existing = [
+        Library("Discover Movies", "movies", (r"F:\MedialabDiscover\Movies",)),
+    ]
+    ctx = _ctx(workspace_root, _shell(moved=False))
+    _with_jellyfin_key(ctx, workspace_root)
+    assert run_update(ctx) is False
+    assert FakeJellyfin.instances[0].deleted == ["Discover Movies"]
+
+
+def test_dry_run_up_to_date_contacts_no_jellyfin(workspace_root: Path) -> None:
+    ctx = _ctx(workspace_root, _shell(moved=False), dry_run=True)
+    _with_jellyfin_key(ctx, workspace_root)
+    run_update(ctx)
+    assert FakeJellyfin.instances == []
+
+
+def test_migration_drops_retired_keys_from_their_service_only(workspace_root: Path) -> None:
+    ctx = _ctx(workspace_root, _shell())
+    ctx.removed_keys = {"svc-a": frozenset({"OLD_KEY"})}
+    (workspace_root / "svc-a" / ".env").write_text("API_KEY=k\nSHARED_KEY=s\nOLD_KEY=1\n")
+    (workspace_root / "svc-b" / ".env").write_text("API_KEY=k\nSHARED_KEY=s\nOLD_KEY=2\n")
+    (workspace_root / ".env").write_text("MEDIA_HOST_DIR=F:/Media\nDISCOVER_HOST_DIR=G:/Old\n")
+    run_update(ctx)
+    assert "OLD_KEY" not in parse_env_values((workspace_root / "svc-a" / ".env").read_text())
+    assert parse_env_values((workspace_root / "svc-b" / ".env").read_text())["OLD_KEY"] == "2"
+    root_values = parse_env_values((workspace_root / ".env").read_text())
+    assert root_values["DISCOVER_HOST_DIR"] == "G:/Old"
+
+
+def test_retired_discover_keys_are_scoped_to_their_services() -> None:
+    expected = {
+        JELLYFIN_WORKER: frozenset({"DISCOVER_MOUNT_PATH"}),
+        ORCHESTRATOR: frozenset(
+            {
+                "DISCOVER_REFRESH_SECONDS",
+                "DISCOVER_POLL_SECONDS",
+                "DISCOVER_RECOMMENDATIONS_PER_TITLE",
+                "JELLYFIN_REQUEST_USERS",
+                "JELLYFIN_REQUEST_RETRY_HOURS",
+                "JELLYFIN_REQUEST_RESOLUTION",
+                "JELLYFIN_WEBHOOK_SECRET",
+            }
+        ),
+    }
+    assert expected == REMOVED_KEYS
+    assert ROOT_TARGET not in REMOVED_KEYS
 
 
 def test_dry_run_update_contacts_no_jellyfin(workspace_root: Path) -> None:

@@ -18,6 +18,7 @@ from medialab_setup.generate import render_all, write_all
 from medialab_setup.host import HostPhase, HostRow
 from medialab_setup.jellyfin_client import (
     JellyfinClient,
+    JellyfinResponseError,
     ensure_library_roots,
     legacy_discover_host_dir,
     report_discover_teardown,
@@ -188,7 +189,7 @@ def run_provision(ctx: SetupContext) -> None:
     client = ctx.make_jellyfin_client(answers.jellyfin_api_key.get_secret_value())
     try:
         created = ensure_library_roots(client, answers.media_host_dir)
-    except httpx.HTTPError as error:
+    except (httpx.HTTPError, JellyfinResponseError) as error:
         raise ScriptError(f"Jellyfin library registration failed: {error}") from error
     report_discover_teardown(
         client, legacy_discover_host_dir(ctx.workspace.root_env_values()), ctx.console.print

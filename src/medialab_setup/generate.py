@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 
 from medialab_setup.answers import Answers
@@ -32,9 +33,16 @@ def collect_existing(workspace: Workspace, bindings: tuple[Binding, ...] = BINDI
 
 
 def render_all(
-    workspace: Workspace, answers: Answers, bindings: tuple[Binding, ...] = BINDINGS
+    workspace: Workspace,
+    answers: Answers,
+    bindings: tuple[Binding, ...] = BINDINGS,
+    removed_keys: Mapping[str, frozenset[str]] | None = None,
 ) -> dict[str, str]:
-    """Rendered text per target name. Targets without a template are skipped."""
+    """Rendered text per target name. Targets without a template are skipped.
+
+    `removed_keys` names, per target, existing keys to drop instead of carrying over.
+    """
+    dropped_by_target = removed_keys or {}
     rendered: dict[str, str] = {}
     for target in workspace.env_targets():
         if not target.example_path.exists():
@@ -47,7 +55,11 @@ def render_all(
             and (plain := answers.plain_value(binding.field)) is not None
         }
         values.update(answers.extra.get(target.name, {}))
-        rendered[target.name] = render_env(template, values, existing=_existing_values(target))
+        dropped = dropped_by_target.get(target.name, frozenset())
+        existing = {
+            key: value for key, value in _existing_values(target).items() if key not in dropped
+        }
+        rendered[target.name] = render_env(template, values, existing=existing)
     return rendered
 
 

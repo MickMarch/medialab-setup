@@ -1,9 +1,13 @@
+from unittest.mock import MagicMock, patch
+
 import httpx
+import pytest
 
 from medialab_setup.jellyfin_client import (
     LEGACY_DISCOVER_HOST_DIR_DEFAULT,
     LEGACY_DISCOVER_HOST_DIR_KEY,
     JellyfinClient,
+    JellyfinResponseError,
     Library,
     ensure_library_roots,
     host_path,
@@ -123,9 +127,84 @@ class UnreachableJellyfin(FakeJellyfin):
 def test_an_unreachable_jellyfin_is_a_warning_not_a_failure() -> None:
     lines: list[str] = []
     report_discover_teardown(UnreachableJellyfin([]), OLD_DISCOVER_DIR, lines.append)
-    assert len(lines) == 1 and "not removed" in lines[0]
+    assert len(lines) == 1
+    assert "Discover Movies" in lines[0] and "Discover Shows" in lines[0]
+    assert "dashboard" in lines[0]
 
 
 def test_old_folder_comes_from_the_root_env_or_the_old_default() -> None:
     assert legacy_discover_host_dir({LEGACY_DISCOVER_HOST_DIR_KEY: "G:/Old"}) == "G:/Old"
     assert legacy_discover_host_dir({}) == LEGACY_DISCOVER_HOST_DIR_DEFAULT
+
+
+class BadShapeJellyfin(FakeJellyfin):
+    def list_libraries(self) -> list[Library]:
+        raise JellyfinResponseError("not a list")
+
+
+def test_an_unexpected_jellyfin_body_is_a_warning_not_a_failure() -> None:
+    lines: list[str] = []
+    report_discover_teardown(BadShapeJellyfin([]), OLD_DISCOVER_DIR, lines.append)
+    assert len(lines) == 1 and "dashboard" in lines[0]
+
+
+class FailingDeleteJellyfin(FakeJellyfin):
+    def delete_library(self, name: str) -> None:
+        if name == "Discover Shows":
+            raise httpx.ConnectError("refused")
+        super().delete_library(name)
+
+
+def test_a_failed_delete_names_only_the_library_left_behind() -> None:
+    lines: list[str] = []
+    client = FailingDeleteJellyfin(_discover_libraries())
+    report_discover_teardown(client, OLD_DISCOVER_DIR, lines.append)
+    assert client.deleted == ["Discover Movies"]
+    warning = next(line for line in lines if "dashboard" in line)
+    assert "Discover Shows" in warning and "Discover Movies" not in warning
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        pytest.param(ValueError("not json"), id="non-json"),
+        pytest.param({"Name": "Movies"}, id="object-not-list"),
+        pytest.param(["Movies"], id="list-of-strings"),
+        pytest.param([{"Name": "Movies", "Locations": "F:/Media"}], id="locations-not-list"),
+    ],
+)
+def test_list_libraries_raises_a_response_error_on_a_bad_body(body: object) -> None:
+    response = MagicMock()
+    if isinstance(body, Exception):
+        response.json.side_effect = body
+    else:
+        response.json.return_value = body
+    with (
+        patch("medialab_setup.jellyfin_client.httpx.get", return_value=response),
+        pytest.raises(JellyfinResponseError),
+    ):
+        JellyfinClient(api_key="k").list_libraries()
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        pytest.param(r"F:\MedialabDiscoverX\Movies", id="prefix-collision"),
+        pytest.param(r"F:\MedialabDiscover\..\Movies", id="dot-dot-segment"),
+        pytest.param(r"F:\Media\Movies", id="unrelated"),
+    ],
+)
+def test_a_path_outside_the_old_folder_is_kept(path: str) -> None:
+    client = FakeJellyfin([Library("Discover Movies", "movies", (path,))])
+    result = remove_discover_libraries(client, OLD_DISCOVER_DIR)
+    assert client.deleted == []
+    assert result.skipped == ["Discover Movies"]
+
+
+@pytest.mark.parametrize("root", ["F:", "F:/", "/", ""])
+def test_a_drive_or_root_only_discover_folder_skips_the_teardown(root: str) -> None:
+    lines: list[str] = []
+    client = FakeJellyfin(_discover_libraries())
+    report_discover_teardown(client, root, lines.append)
+    assert client.deleted == []
+    assert len(lines) == 1 and "warning" in lines[0]

@@ -38,12 +38,16 @@ as the schema and writes that service's `.env`; secrets live only in the
 
 ## Retired Discover libraries
 
-`setup` (after library registration) and `update` (after a green doctor)
-delete the Jellyfin libraries "Discover Movies" and "Discover Shows" when
+`setup` (after library registration) and `update` (after a green doctor,
+and on every up-to-date run so a failed teardown is retried) delete the Jellyfin libraries "Discover Movies" and "Discover Shows" when
 every path they hold is under the old Discover folder: `DISCOVER_HOST_DIR`
 from the root `.env` if still present, otherwise `F:/MedialabDiscover`. A
-library with that name and any other path is kept and reported. A Jellyfin
-error is a warning, never a failed run. The folder itself is never deleted;
+library with that name and any other path is kept and reported. A drive-only
+folder skips the teardown. A Jellyfin error is a warning naming each library
+left behind, to delete in the Jellyfin dashboard, never a failed run.
+
+`update` also drops service `.env` keys retired with the Discover libraries
+(`REMOVED_KEYS` in `update_flow.py`), since the services reject unknown keys. The folder itself is never deleted;
 remove it by hand (see `docs/host-setup.md` in the workspace).
 
 ## Development

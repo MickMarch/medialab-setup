@@ -9,7 +9,13 @@ from dataclasses import dataclass, field
 from rich.console import Console
 from rich.table import Table
 
-from medialab_setup.bindings import BINDINGS, REQUIRED_FIELDS, Binding
+from medialab_setup.bindings import (
+    BINDINGS,
+    JELLYFIN_WORKER,
+    ORCHESTRATOR,
+    REQUIRED_FIELDS,
+    Binding,
+)
 from medialab_setup.collect import CollectError
 from medialab_setup.compose_project import ProjectConflict, ensure_project_is_ours
 from medialab_setup.envfile import EnvTemplate, parse_env_values
@@ -37,6 +43,25 @@ SNAPSHOT_ROOT_KEY = "root_commit"
 UP_TO_DATE = "up to date"
 IMAGE_TAG_SEPARATOR = ":"
 COMPOSE_RUNNING_STATE = "running"
+
+# Keys retired from a service template (MickMarch/medialab#168). render_env keeps
+# keys a template dropped and pydantic-settings rejects unknown dotenv keys, so
+# migration deletes these from the owning service `.env`. The root
+# DISCOVER_HOST_DIR stays: the Discover teardown reads it.
+REMOVED_KEYS: dict[str, frozenset[str]] = {
+    JELLYFIN_WORKER: frozenset({"DISCOVER_MOUNT_PATH"}),
+    ORCHESTRATOR: frozenset(
+        {
+            "DISCOVER_REFRESH_SECONDS",
+            "DISCOVER_POLL_SECONDS",
+            "DISCOVER_RECOMMENDATIONS_PER_TITLE",
+            "JELLYFIN_REQUEST_USERS",
+            "JELLYFIN_REQUEST_RETRY_HOURS",
+            "JELLYFIN_REQUEST_RESOLUTION",
+            "JELLYFIN_WEBHOOK_SECRET",
+        }
+    ),
+}
 
 
 class UpdateError(RuntimeError):
@@ -85,6 +110,7 @@ class UpdateContext:
     prompter: Prompter
     console: Console
     bindings: tuple[Binding, ...] = BINDINGS
+    removed_keys: dict[str, frozenset[str]] = field(default_factory=lambda: dict(REMOVED_KEYS))
     make_jellyfin_client: type[JellyfinClient] = JellyfinClient
     git: Git = field(init=False)
     snapshot_commit: str | None = None
@@ -208,7 +234,7 @@ def fetch(ctx: UpdateContext) -> None:
 def migrate_config(ctx: UpdateContext) -> Table:
     """Append template keys the live .env files lack; flag keys the template dropped."""
     answers = collect_existing(ctx.workspace, ctx.bindings).with_generated()
-    rendered = render_all(ctx.workspace, answers, ctx.bindings)
+    rendered = render_all(ctx.workspace, answers, ctx.bindings, removed_keys=ctx.removed_keys)
     table = Table(title="Config migration")
     table.add_column("File")
     table.add_column("Added")
@@ -288,6 +314,9 @@ def run_update(ctx: UpdateContext) -> bool:
         ctx.console.print(f"  {commit.sha} {commit.subject}")
     if not commits and not any(row.needs_work for row in rows):
         ctx.console.print(UP_TO_DATE)
+        if not ctx.options.dry_run:
+            ctx.console.rule("teardown")
+            teardown_discover(ctx, legacy_discover_host_dir(ctx.workspace.root_env_values()))
         return False
     stale = [row.service for row in rows if row.stale and not row.moves]
     if stale:

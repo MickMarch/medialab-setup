@@ -3,7 +3,8 @@ retired Discover libraries. Faked at this class in tests."""
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+import ntpath
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import PureWindowsPath
 
@@ -21,6 +22,16 @@ REFRESH_LIBRARY_OFF = "false"
 LEGACY_DISCOVER_LIBRARY_NAMES: tuple[str, ...] = ("Discover Movies", "Discover Shows")
 LEGACY_DISCOVER_HOST_DIR_KEY = "DISCOVER_HOST_DIR"
 LEGACY_DISCOVER_HOST_DIR_DEFAULT = "F:/MedialabDiscover"
+# A drive or root alone ("F:", "F:/", "/") is never a safe teardown root.
+MIN_DISCOVER_ROOT_PARTS = 2
+
+
+class JellyfinResponseError(RuntimeError):
+    """Jellyfin answered with a body that is not the expected library list."""
+
+
+class UnsafeDiscoverRootError(ValueError):
+    """The old Discover folder is a drive or root alone."""
 
 
 @dataclass(frozen=True)
@@ -42,14 +53,11 @@ class JellyfinClient:
             timeout=REQUEST_TIMEOUT_SECONDS,
         )
         response.raise_for_status()
-        return [
-            Library(
-                name=str(item.get("Name", "")),
-                collection_type=item.get("CollectionType"),
-                paths=tuple(str(path) for path in item.get("Locations", [])),
-            )
-            for item in response.json()
-        ]
+        try:
+            body = response.json()
+        except ValueError as error:
+            raise JellyfinResponseError(f"library list is not JSON: {error}") from error
+        return _parse_libraries(body)
 
     def create_library(self, name: str, collection_type: str, path: str) -> None:
         response = httpx.post(
@@ -75,10 +83,32 @@ class JellyfinClient:
         response.raise_for_status()
 
 
+def _parse_libraries(body: object) -> list[Library]:
+    if not isinstance(body, list):
+        raise JellyfinResponseError("library list is not a JSON array")
+    libraries: list[Library] = []
+    for item in body:
+        if not isinstance(item, dict):
+            raise JellyfinResponseError("library entry is not a JSON object")
+        locations = item.get("Locations", [])
+        if not isinstance(locations, list):
+            raise JellyfinResponseError("library Locations is not a JSON array")
+        collection_type = item.get("CollectionType")
+        libraries.append(
+            Library(
+                name=str(item.get("Name", "")),
+                collection_type=None if collection_type is None else str(collection_type),
+                paths=tuple(str(path) for path in locations),
+            )
+        )
+    return libraries
+
+
 @dataclass
 class DiscoverTeardown:
     removed: list[str] = field(default_factory=list)
     skipped: list[str] = field(default_factory=list)
+    failed: list[str] = field(default_factory=list)
 
 
 def host_path(media_host_dir: str, subdir: str) -> str:
@@ -103,25 +133,44 @@ def ensure_library_roots(client: JellyfinClient, media_host_dir: str) -> list[st
     return created
 
 
+def _normalized(path: str) -> PureWindowsPath:
+    return PureWindowsPath(ntpath.normpath(path).lower())
+
+
 def _is_under(path: str, root: str) -> bool:
-    folded = PureWindowsPath(path.lower())
-    return folded.is_relative_to(PureWindowsPath(root.lower()))
+    return _normalized(path).is_relative_to(_normalized(root))
+
+
+def is_safe_discover_root(discover_host_dir: str) -> bool:
+    """False for an empty path, a drive alone or a root alone."""
+    if not discover_host_dir.strip():
+        return False
+    return len(_normalized(discover_host_dir).parts) >= MIN_DISCOVER_ROOT_PARTS
 
 
 def remove_discover_libraries(client: JellyfinClient, discover_host_dir: str) -> DiscoverTeardown:
     """Delete each retired Discover library whose every path is under the old Discover folder.
 
-    A library with a Discover name and any other path is left alone and reported as skipped.
+    A library with a Discover name and any other path is left alone and reported as skipped;
+    a delete Jellyfin refuses is reported as failed. Listing errors propagate.
     """
+    if not is_safe_discover_root(discover_host_dir):
+        raise UnsafeDiscoverRootError(f"refusing Discover folder {discover_host_dir!r}")
     result = DiscoverTeardown()
     for library in client.list_libraries():
         if library.name not in LEGACY_DISCOVER_LIBRARY_NAMES:
             continue
-        if library.paths and all(_is_under(path, discover_host_dir) for path in library.paths):
-            client.delete_library(library.name)
-            result.removed.append(library.name)
-        else:
+        if not library.paths or not all(
+            _is_under(path, discover_host_dir) for path in library.paths
+        ):
             result.skipped.append(library.name)
+            continue
+        try:
+            client.delete_library(library.name)
+        except httpx.HTTPError:
+            result.failed.append(library.name)
+        else:
+            result.removed.append(library.name)
     return result
 
 
@@ -130,17 +179,30 @@ def legacy_discover_host_dir(root_env: Mapping[str, str]) -> str:
     return root_env.get(LEGACY_DISCOVER_HOST_DIR_KEY) or LEGACY_DISCOVER_HOST_DIR_DEFAULT
 
 
+def _left_behind_warning(names: Sequence[str], reason: str) -> str:
+    return (
+        f"[yellow]warning:[/yellow] retired Jellyfin libraries may be left behind "
+        f"({', '.join(names)}): {reason}. Delete them in the Jellyfin dashboard under "
+        f"Libraries, or rerun update."
+    )
+
+
 def report_discover_teardown(
     client: JellyfinClient, discover_host_dir: str, emit: Callable[[str], None]
 ) -> None:
-    """Run the teardown; a Jellyfin error is a warning, never a failed run."""
+    """Run the teardown; any failure is a warning naming what is left, never a failed run."""
     try:
         result = remove_discover_libraries(client, discover_host_dir)
-    except httpx.HTTPError as error:
-        emit(f"[yellow]warning:[/yellow] Discover libraries not removed: {error}")
+    except UnsafeDiscoverRootError as error:
+        emit(f"[yellow]warning:[/yellow] Discover teardown skipped: {error}")
+        return
+    except (httpx.HTTPError, JellyfinResponseError) as error:
+        emit(_left_behind_warning(LEGACY_DISCOVER_LIBRARY_NAMES, str(error)))
         return
     if result.removed:
         emit(f"Removed retired Jellyfin libraries: {', '.join(result.removed)}")
+    if result.failed:
+        emit(_left_behind_warning(result.failed, "Jellyfin refused the delete"))
     for name in result.skipped:
         emit(
             f"[yellow]warning:[/yellow] kept library {name!r}: it has paths outside "
